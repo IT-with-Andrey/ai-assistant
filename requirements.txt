@@ -1,6 +1,6 @@
 
 openai
-
+fastapi
 python-dotenv
-
+sqlalchemy
 httpx

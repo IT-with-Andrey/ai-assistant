@@ -6,27 +6,50 @@ function App() {
   const [input, setInput] = useState("");
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMessage = { role: "user", content: input };
-
+    // Отправляем всегда, даже пустую строку – бэкенд сам проверит
+    const userMessage = { role: "user", content: input || "(пустое сообщение)" };
     setMessages((prev) => [...prev, userMessage]);
 
-    const response = await fetch("http://localhost:8000/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: input }),
-    });
+    try {
+      const response = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: input }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    const aiMessage = { role: "ai", content: data.response };
+      let aiContent = "";
+      if (data.error) {
+        // Если бэкенд вернул ошибку
+        aiContent = `❌ Ошибка: ${data.error}`;
+      } else {
+        // Успешный ответ – показываем текст и длину
+        aiContent = `${data.response} (длина: ${data.length} символов)`;
+        if (data.count) {
+          aiContent +=  `\n📊 ${data.count}`;
+        }
+      }
 
-    setMessages((prev) => [...prev, aiMessage]);
+      const aiMessage = { role: "ai", content: aiContent };
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      const errorMessage = { role: "ai", content: "❌ Не удалось соединиться с сервером" };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
 
     setInput("");
+  };
+
+  const clearChat = async () => {
+    try {
+      await fetch("http://localhost:8000/reset", { method: "POST" });
+    } catch (err) {
+      console.error('Не удалось сбросить щетчик ' ,err)
+    }
+    setMessages([]);
   };
 
   return (
@@ -45,8 +68,8 @@ function App() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Напиши сообщение..."
         />
-
         <button onClick={sendMessage}>Send</button>
+        <button onClick={clearChat} >Clear chat full</button>
       </div>
     </div>
   );
