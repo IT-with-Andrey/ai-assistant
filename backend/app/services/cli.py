@@ -1,16 +1,23 @@
-
+from backend.app.database.connection import SessionLocal, engine, Base
+from backend.app.database.models import Message, Summary
 from backend.app.services.assistant_service import chat
 
 
-while True:
+def main():
 
-    user_input = input('You: ')
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        while 1:
+            user_input = input('You: ')
+            if user_input == 'exit':
+                break
+            answer = chat(user_input, db)
+            print(f'AI: {answer}')
+    finally:
+        db.commit()
+        db.close()
 
 
-    if user_input == 'exit':
-        break
-
-    answer = chat(user_input)
-
-    print(f'AI: {answer}')
-    
+if __name__ == '__main__':
+    main()

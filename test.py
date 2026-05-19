@@ -1,19 +1,14 @@
 
-from backend.app.ai.provider import generate_response
-
-from backend.app.ai.context_builder import build_context
-
-from backend.app.ai.prompts import SYSTEM_PROMPT
+from backend.app.database.connection import SessionLocal
+from backend.app.services.assistant_service import chat
 
 
-history = []
+db = SessionLocal()
 
 user_input = "Привет"
 
-message = build_context(history , user_input)
+response = chat(user_input, db)
 
-print("MESSAGE", message)
+print("RESPONSE:", response)
 
-response = generate_response(message)
-
-print('RESPONSE:', response)
+db.close()

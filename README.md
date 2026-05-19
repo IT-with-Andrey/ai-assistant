@@ -1,127 +1,168 @@
-AI Assistant — Project Architecture (README)
-📌 Project Idea
 
-Personal AI assistant for:
-
-learning programming
-tracking progress
-storing memory/history
-helping with code
-working with local or cloud LLMs
-
-The project is built progressively in stages:
-
-simple working core first
-then memory
-then database
-then API
-then tools/features
-
-Main goal:
-
-build a real middle-level backend project instead of a simple pet-project script.
-
-🧠 Main Philosophy
-
-The AI model is replaceable.
-
-The real system is:
-
-architecture
-memory
-context management
-backend logic
-database
-tools
-state management
-
-Models can be swapped:
-
-OpenAI
-OpenRouter
-Ollama
-LM Studio
-local LLaMA
-Claude
-DeepSeek
-
-without rewriting the whole project.
-
-🏗 Project Architecture
-User
- ↓
-Application Layer
- ↓
-Assistant Core
- ↓
-Memory System
- ↓
-Database
- ↓
-LLM Provider
- ↓
-AI Response
-📂 Project Structure
-ai-assistant/
+backend/
+├── core/
+│   └── config.py              ← читает .env, отдаёт API_KEY и MODEL
 │
-├── app/
-│   │
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── settings.py
-│   │   └── logger.py
-│   │
-│   ├── ai/
-│   │   ├── provider.py
-│   │   ├── prompts.py
-│   │   ├── memory_manager.py
-│   │   └── context_builder.py
-│   │
-│   ├── services/
-│   │   ├── assistant_service.py
-│   │   └── chat_service.py
-│   │
-│   ├── database/
-│   │   ├── connection.py
-│   │   ├── models.py
-│   │   └── repositories/
-│   │
-│   ├── api/
-│   │   ├── routes/
-│   │   └── dependencies.py
-│   │
-│   ├── schemas/
-│   │   ├── chat.py
-│   │   └── user.py
-│   │
-│   ├── tools/
-│   │   ├── file_tool.py
-│   │   ├── search_tool.py
-│   │   └── code_tool.py
-│   │
-│   └── main.py
+├── database/
+│   ├── connection.py          ← engine, SessionLocal, Base, get_db()
+│   ├── models.py              ← описание таблицы Message
+│   └── repository.py          ← save_message(), get_last_messages() (чистые операции с БД)
 │
-├── tests/
+├── ai/
+│   ├── prompts.py             ← SYSTEM_PROMPT (личность ассистента)
+│   ├── context_builder.py     ← build_context() – собирает history + system + user
+│   └── provider.py            ← generate_response() – запрос к LLM (Ollama / OpenRouter)
 │
-├── requirements.txt
-├── .env
-├── README.md
-└── docker-compose.yml
-⚙️ Tech Stack
-Backend
-Python
-FastAPI
-Database
-PostgreSQL
-ORM
-SQLAlchemy 2.0
-AI Providers
-OpenRouter
-OpenAI
-Ollama
-LM Studio
-Async
-asyncio
-httpx
-DevOps
-Docker
+└── services/
+    ├── assistant_service.py   ← chat() – ГЛАВНЫЙ ОРКЕСТРАТОР (связывает все части)
+    ├── cli.py                 ← терминальный интерфейс (бесконечный цикл "You: / AI:")
+    └── main.py                ← FastAPI-сервер (POST /chat)
+
+ 
+Пользователь (терминал)
+   │
+   ▼
+cli.py:
+   db = SessionLocal()                 ──┐
+   user_input = input("You: ")          │
+   answer = chat(user_input, db) ──┐    │
+   print(f"AI: {answer}")          │    │
+   db.close()                      │    │
+                                   │    │
+                                   ▼    │
+assistant_service.py: chat()      │    │
+   │                               │    │
+   ├─ save_message(db, 'user', user_input)  ────► repository.py → Message → БД
+   │
+   ├─ history_msgs = get_last_messages(db, 10) ─► repository.py → БД
+   │
+   ├─ history = [{role, content}, ...]  (преобразование объектов в словари)
+   │
+   ├─ messages = build_context(history, user_input) ──► context_builder.py
+   │      │                                                │
+   │      │  ┌─ system: SYSTEM_PROMPT  ◄─── prompts.py
+   │      │  ├─ ...старые сообщения...
+   │      │  └─ user: user_input
+   │      │
+   │      ▼
+   ├─ answer = generate_response(messages) ──► provider.py
+   │      │                                       │
+   │      │  ┌─ Ollama (localhost:11434)
+   │      │  └─ или OpenRouter API
+   │      │
+   │      ▼  (возвращает текст)
+   │
+   ├─ save_message(db, 'assistant', answer)  ──► repository.py → БД
+   │
+   └─ return answer
+
+   ┌─────────────────────────────────────────────┐
+│                  USER                       │
+│  Пишет сообщение: "Привет"                 │
+└─────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────┐
+│               INTERFACE LAYER               │
+│                                             │
+│  cli.py            или        main.py       │
+│  (терминал)                   (FastAPI)     │
+│                                             │
+│  Получает сообщение пользователя            │
+└─────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────┐
+│            assistant_service.py             │
+│                                             │
+│         ГЛАВНЫЙ ОРКЕСТРАТОР СИСТЕМЫ         │
+│                                             │
+│  chat(user_message)                         │
+│                                             │
+│  1. сохраняет user message                  │
+│  2. достаёт history                         │
+│  3. собирает context                        │
+│  4. вызывает LLM                            │
+│  5. сохраняет ответ AI                      │
+│  6. возвращает ответ                        │
+└─────────────────────────────────────────────┘
+         │                  │
+         │                  │
+         ▼                  ▼
+
+┌───────────────────┐    ┌────────────────────┐
+│    DATABASE       │    │      AI LAYER      │
+└───────────────────┘    └────────────────────┘
+         │                          │
+         ▼                          ▼
+
+┌───────────────────┐    ┌────────────────────┐
+│  repository.py    │    │ context_builder.py │
+│                   │    │                    │
+│ save_message()    │    │ build_context()    │
+│ get_history()     │    │                    │
+│                   │    │ Собирает:          │
+│ Чистая работа     │    │                    │
+│ с базой данных    │    │ - system prompt    │
+│                   │    │ - history          │
+│                   │    │ - user message     │
+└───────────────────┘    └────────────────────┘
+         │                          │
+         ▼                          ▼
+
+┌───────────────────┐    ┌────────────────────┐
+│    models.py      │    │    prompts.py      │
+│                   │    │                    │
+│ Message table     │    │ SYSTEM_PROMPT      │
+│                   │    │                    │
+│ id                │    │ "Ты AI assistant"  │
+│ role              │    │                    │
+│ content           │    │ Характер модели    │
+│ timestamp         │    │ Правила поведения  │
+└───────────────────┘    └────────────────────┘
+         │
+         ▼
+┌───────────────────┐
+│ connection.py     │
+│                   │
+│ engine            │
+│ SessionLocal      │
+│ Base              │
+│ get_db()          │
+│                   │
+│ Подключение       │
+│ к PostgreSQL      │
+└───────────────────┘
+
+
+                     ▼
+┌─────────────────────────────────────────────┐
+│               provider.py                   │
+│                                             │
+│        generate_response(messages)          │
+│                                             │
+│  Универсальный адаптер к LLM                │
+│                                             │
+│  Может работать с:                          │
+│  - Ollama                                   │
+│  - OpenAI                                   │
+│  - Claude                                   │
+│  - OpenRouter                               │
+│                                             │
+└─────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────┐
+│                  LLM MODEL                  │
+│                                             │
+│  llama3 / mistral / gpt-4 / claude          │
+│                                             │
+│  Получает context                           │
+│  Генерирует ответ                           │
+└─────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────┐
+│              AI RESPONSE                    │
+│                                             │
+│ "Привет! Чем могу помочь?"                  │

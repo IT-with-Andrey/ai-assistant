@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.database.connenction import Base, engine
+from backend.app.database.connection import Base, engine
 from backend.app.database import models
 from backend.app.services.assistant_service import chat as assistant_chat
-
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from backend.app.database.connection import get_db
 app = FastAPI()
 
 
@@ -35,7 +37,7 @@ def health():
 
 
 @app.post("/chat")
-def chat(data: dict):
+def chat(data: dict , db: Session = Depends(get_db)):
     msg = data.get('message')
 
     
@@ -45,7 +47,7 @@ def chat(data: dict):
         return {"error": "Сообщение не может быть пустым или состоять из одних пробелов"}
     if len(msg) > 30:
         return {'error': 'Слишком много жи есть да '}
-    response = assistant_chat(msg)
+    response = assistant_chat(msg,db)
     return {
         "response": response,
         "original": msg
