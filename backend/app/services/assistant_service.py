@@ -4,7 +4,7 @@ from backend.app.ai.provider import generate_response
 
 from backend.app.ai.context_builder import build_context
 
-from backend.app.database.repository import save_message , get_last_messages ,save_summary , get_lastest_summary
+from backend.app.database.repository import save_message , get_last_messages , get_lastest_summary ,save_user_fact , get_all_user_facts ,save_summary 
 
 from backend.app.database.models import Message
 
@@ -29,21 +29,35 @@ def chat(user_input, db):
      # 1. Save the user's message to the database
 
     save_message(db , role='user', content=user_input)
-    # Get the last 10 messages from the DB (now including the one we just save
+    
     message_from_db = get_last_messages(db,limit=MAX_HISTORY)
     if len(message_from_db) >= MAX_HISTORY:
         old_messages = message_from_db[:SUMMARY_TRIGGER]
-        summary_prompt = [
-            {'role':'system', 'content':  'Summarize the following conversation in Russian. Keep important details, decisions, user preferences.'
-            ' Write concisely . Write concisely '},
-             {"role": "user", "content": "\n".join([f"{m.role}: {m.content}" for m in old_messages])}
-        ]
+        extraction_prompt = [ { "role": "system", 
+                    "content": ( "Ты — система извлечения пользовательской памяти. " 
+                            "Твоя задача — извлечь ТОЛЬКО явные факты из диалога о пользователе: " 
+                            "имя, цели, проекты, технологии, языки, интересы, предпочтения, опыт, планы, background. " 
+                            "Не выдумывай ничего, чего нет в диалоге. " "Не используй догадки и не дополняй факты от себя. " 
+                            "Не дублируй одинаковую информацию. " "Если один и тот же факт можно записать несколькими способами — выбери один короткий и консистентный вариант. " 
+                            "Пиши value кратко, конкретно и без лишних пояснений. " 
+                            "Верни СТРОГО JSON-массив объектов вида:\n" '[{"key":"...","value":"..."}, ...]\n' 
+                            "Используй только lowercase key в едином стиле, например: name, goals, projects, languages, interests, preferences, background. " 
+                            "Если фактов нет, верни []. " 
+                            "Не добавляй markdown, комментарии, пояснения или любой другой текст вне JSON." ) }, 
+                            { "role": "user", 
+                            "content": ( "Диалог для анализа:\n" + "\n".join([f"{m.role}: {m.content}" for m in old_messages]) ) } 
+                            ]
 
-        # Generate a resume
-        summary_text = generate_response(summary_prompt)
-
-        # Saved summary in basedata
-        save_summary(db,summary_text)
+        raw_facts_json = generate_response(extraction_prompt)
+        import json
+        try:
+            facts = json.loads(raw_facts_json)
+            if isinstance(facts, list):  
+                for fact in facts:
+                    if isinstance(fact,dict ) and 'key' in fact and 'value' in fact:
+                        save_user_fact(db , fact['key'], fact['value'])
+        except json.JSONDecodeError:
+            save_summary(db,raw_facts_json)
 
         stmt = delete(Message).where(Message.id.in_([m.id for m in old_messages]))
         db.execute(stmt)
@@ -54,9 +68,14 @@ def chat(user_input, db):
 
     #  Convert Message objects into a list of dicts for the AI
     history = [{'role': msg.role, 'content': msg.content} for msg in message_from_db]
-    # Берём последнее резюме, если есть
+     # Получаем все факты о пользователе
     latest_summary = get_lastest_summary(db)
-    context_message = build_context(history, user_input, summary=latest_summary.content if latest_summary else None)
+    user_facts = get_all_user_facts(db)
+    # Берём последнее резюме, если есть
+
+    context_message = build_context(history, user_input, 
+                                    user_facts=user_facts,
+                                    summary=latest_summary.content if latest_summary else None)
 
     # 5. Получаем ответ
     answer = generate_response(context_message)
@@ -65,3 +84,21 @@ def chat(user_input, db):
     save_message(db, role='assistant', content=answer)
 
     return answer
+
+
+
+
+"""
+user_input
+  │
+  ├─> save_message(user)          # БД
+  ├─> get_last_messages(10)       # БД
+  ├─> if len >= 10:
+  │     ├─> generate_response(...) # AI (суммаризация)
+  │     ├─> save_message(...)      # БД
+  │     └─> delete old messages    # БД
+  ├─> get_last_messages(10)       # БД (обновлённые)
+  ├─> build_context(history, user_input, summary)  # формирование контекста
+  ├─> generate_response(context)  # AI (основной ответ)
+  └─> save_message(assistant)     # БД
+"""

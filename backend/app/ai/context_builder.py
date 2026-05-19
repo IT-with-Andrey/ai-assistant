@@ -2,7 +2,7 @@
 
 from backend.app.ai.prompts import SYSTEM_PROMPT
 
-def build_context(history, user_input,summary: str = None):
+def build_context(history, user_input,summary: str = None , user_facts:list =None):
 
     """
     Builds the full context for sending to the LLM
@@ -15,13 +15,22 @@ def build_context(history, user_input,summary: str = None):
 
                     """
     # statr with the System message - Instruction for the model
+     #Если есть факты о пользователе, добавляем их как системную информацию
     message = [
         {
             'role': 'system',
             'content': SYSTEM_PROMPT or 'You are assistant'
         }
     ]
-    # if there is a summary of the pervious dialogue, add it as system information 
+    if user_facts:
+        facts_text = ' Факты о пользователе: \n' + '\n'.join(
+            [f'- {f.key}: {f.value}' for f in user_facts]
+
+        )
+        message.append({
+            'role': 'system',
+            'content': facts_text
+        })
     if summary:
         message.append({
             'role': 'system',

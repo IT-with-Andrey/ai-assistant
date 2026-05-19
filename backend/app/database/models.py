@@ -15,6 +15,19 @@ from datetime import datetime , timezone
 from backend.app.database.connection import Base
 # We import our base class from the connention module
 
+
+class UserFact(Base):
+    __tablename__ = 'user_facts'
+    id = Column(Integer, primary_key=True , index=True)
+    key = Column(String, nullable=False)
+    value = Column(Text, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+
+
+
 class Message(Base):           # Inherit from Base - this makes the class a database table model
     __tablename__ = 'messages' # is requierd - it sets the actual table name in the database 
                                 # and then the table named message will be created 

@@ -1,6 +1,8 @@
-
+dotenv
 openai
 fastapi
 python-dotenv
 sqlalchemy
 httpx
+requests
+pydantic 

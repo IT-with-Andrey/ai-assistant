@@ -32,17 +32,21 @@ MODEL = "qwen2.5-coder:7b"
 
 
 def generate_response(message):
+    """ The process of sending a message"""
     response = requests.post(
         "http://localhost:11434/api/chat",
         json={
             "model": MODEL,
             "messages": message,
-            "stream": False
+            "stream": False,
+            'options': {
+                'num_predict' : 2048
+            }
         }
     )
     # for debugging , print status and raw response
     # print("STATUS:", response.status_code)
     # print("TEXT:", response.text)
 
-    data = response.json()
+    data = response.json() # json.loads(response.text).
     return data["message"]["content"]   # extract the response text 

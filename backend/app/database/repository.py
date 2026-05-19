@@ -1,7 +1,7 @@
 
 
 
-from backend.app.database.models import Message, Summary
+from backend.app.database.models import Message, Summary , UserFact
 
 
 def save_message(db , role: str , content: str):
@@ -49,3 +49,14 @@ def save_summary(db , content :str):
 def get_lastest_summary(db):
       """Returns the most recent resume or None."""
       return db.query(Summary).order_by(Summary.id.desc()).first()
+
+
+def save_user_fact(db, key: str,value: str):
+      """Stores one fact about the user."""
+
+      fact = UserFact(key=key, value=value)
+      db.add(fact)
+      db.commit()
+
+def get_all_user_facts(db):
+      return db.query(UserFact).all()
