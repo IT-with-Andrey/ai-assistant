@@ -24,9 +24,8 @@ def build_context(history, user_input,summary: str = None , user_facts:list =Non
     ]
     if user_facts:
         facts_text = ' Факты о пользователе: \n' + '\n'.join(
-            [f'- {f.key}: {f.value}' for f in user_facts]
-
-        )
+    [f'- {str(f.key)}: {str(f.value)}' for f in user_facts]
+)
         message.append({
             'role': 'system',
             'content': facts_text
@@ -34,18 +33,17 @@ def build_context(history, user_input,summary: str = None , user_facts:list =Non
     if summary:
         message.append({
             'role': 'system',
-            'content': f"Контекст предыдущего диалога (НЕ обсуждай его, если не спросят, просто используй для понимания):\n{summary}"
-        })
+            'content': f"Контекст предыдущего диалога (НЕ обсуждай его, если не спросят, просто используй для понимания):\n{str(summary)}"})
+
 
     # Clean the history 
     #Keep only messages that have both 'role' and 'content ' (Not None and not empty)
     # Rebuild each  element  as a new dict (just in case , to avoid mutating the original objects)
     clean_history = [
-        {
-            'role': m['role'], 'content': m['content']}
-            for m in history
-            if m.get('role') and m.get('content')
-    ]
+    {'role': m['role'], 'content': str(m['content'])}
+    for m in history
+    if m.get('role') and m.get('content')
+]
     
     
 
@@ -54,8 +52,8 @@ def build_context(history, user_input,summary: str = None , user_facts:list =Non
 
     # Finally , add the current user query
     message.append({
-        'role': 'user',
-        'content': user_input
-    })
+    'role': 'user',
+    'content': str(user_input)
+})
     # return the full context
     return message 

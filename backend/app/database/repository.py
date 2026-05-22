@@ -2,23 +2,13 @@
 
 
 from backend.app.database.models import Message, Summary , UserFact
+from backend.app.core.logging_utils import log_execution_time
 
-
-def save_message(db , role: str , content: str):
-    """
-    Accepts a ready session db and saves one message to the database.
-    it does not open or close the session - that's the caller's responsibility
-      """
-    # Create a Message object (id and timestamp will be set automatically)
+def save_message(db, role: str, content: str):
     msg = Message(role=role, content=content)
-
-    # Add the object to the session (in memory will be set automatically )
     db.add(msg)
-
-    # Commit the changes to the database 
     db.commit()
-    
-    #  Don't Close the session - it will be closed by whoever created it (get_db)
+    return msg   # ← добавить
 
 def  get_last_messages(db,limit: int=10):
     
@@ -45,18 +35,19 @@ def save_summary(db , content :str):
       summary = Summary(content=content)
       db.add(summary)
       db.commit()
-
+      return summary
 def get_lastest_summary(db):
       """Returns the most recent resume or None."""
       return db.query(Summary).order_by(Summary.id.desc()).first()
 
-
+@log_execution_time
 def save_user_fact(db, key: str,value: str):
+      
       """Stores one fact about the user."""
 
       fact = UserFact(key=key, value=value)
       db.add(fact)
       db.commit()
-
+      return fact
 def get_all_user_facts(db):
       return db.query(UserFact).all()

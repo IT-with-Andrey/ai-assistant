@@ -1,76 +1,117 @@
-import { useState } from "react";
-import "./App.css";
+// src/App.js
+import React, { useState, useRef, useEffect } from 'react';
+import './App.css';
 
 function App() {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const chatEndRef = useRef(null);
 
-  const sendMessage = async () => {
-    // Отправляем всегда, даже пустую строку – бэкенд сам проверит
-    const userMessage = { role: "user", content: input || "(пустое сообщение)" };
-    setMessages((prev) => [...prev, userMessage]);
-
-    try {
-      const response = await fetch("http://localhost:8000/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message: input }),
-      });
-
-      const data = await response.json();
-
-      let aiContent = "";
-      if (data.error) {
-        // Если бэкенд вернул ошибку
-        aiContent = `❌ Ошибка: ${data.error}`;
-      } else {
-        // Успешный ответ – показываем текст и длину
-        aiContent = `${data.response} (длина: ${data.length} символов)`;
-        if (data.count) {
-          aiContent +=  `\n📊 ${data.count}`;
-        }
-      }
-
-      const aiMessage = { role: "ai", content: aiContent };
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      const errorMessage = { role: "ai", content: "❌ Не удалось соединиться с сервером" };
-      setMessages((prev) => [...prev, errorMessage]);
-    }
-
-    setInput("");
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const clearChat = async () => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const addMessage = (text, sender) => {
+    setMessages(prev => [...prev, { text, sender }]);
+  };
+
+  const sendMessage = async (messageText) => {
+    if (!messageText.trim() || isLoading) return;
+
+    const userMessage = messageText.trim();
+    addMessage(userMessage, 'user');
+    setInputValue('');
+    setIsLoading(true);
+
     try {
-      await fetch("http://localhost:8000/reset", { method: "POST" });
-    } catch (err) {
-      console.error('Не удалось сбросить щетчик ' ,err)
+      const response = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ошибка сервера: ${response.status}`);
+      }
+
+      const data = await response.json();
+      addMessage(data.response, 'assistant');
+    } catch (error) {
+      console.error('Ошибка при отправке сообщения:', error);
+      addMessage('Извините, произошла ошибка при обращении к серверу.', 'assistant');
+    } finally {
+      setIsLoading(false);
     }
-    setMessages([]);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    sendMessage(inputValue);
+  };
+
+  const handleTestFacts = () => {
+    sendMessage('/test');
   };
 
   return (
-    <div className="container">
-      <div className="chat">
-        {messages.map((msg, i) => (
-          <div key={i} className={msg.role === "user" ? "user" : "ai"}>
-            {msg.content}
+    <div className="chat-container">
+      <header className="chat-header">
+        <h1>Prototype</h1>
+        <button
+          className="test-facts-button"
+          onClick={handleTestFacts}
+          disabled={isLoading}
+        >
+          Загрузить тестовые факты
+        </button>
+      </header>
+
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="empty-chat">
+            <p>Чем я могу помочь?</p>
+          </div>
+        )}
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            className={`message ${msg.sender === 'user' ? 'user-message' : 'assistant-message'}`}
+          >
+            <div className="message-bubble">
+              {msg.text}
+            </div>
           </div>
         ))}
+        {isLoading && (
+          <div className="message assistant-message">
+            <div className="message-bubble typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef} />
       </div>
 
-      <div className="input-box">
+      <form className="chat-input-form" onSubmit={handleSubmit}>
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Напиши сообщение..."
+          type="text"
+          placeholder="Введите сообщение..."
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          disabled={isLoading}
+          autoFocus
         />
-        <button onClick={sendMessage}>Send</button>
-        <button onClick={clearChat} >Clear chat full</button>
-      </div>
+        <button type="submit" disabled={isLoading || !inputValue.trim()}>
+          Отправить
+        </button>
+      </form>
     </div>
   );
 }
