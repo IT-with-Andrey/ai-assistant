@@ -1,3 +1,7 @@
+# tests/test_memory.py
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
 from unittest.mock import patch
@@ -50,12 +54,10 @@ def test_extraction_with_new_keys_and_system_prompt(db_session: Session):
     (name, goal, interest, preference, fact) и внедрение SYSTEM_PROMPT
     в промпт, передаваемый модели.
     """
-    # Записываем все аргументы, с которыми вызывается generate_response
     call_args_list = []
 
     def mock_generate_response(*args, **kwargs):
         call_args_list.append((args, kwargs))
-        # Возвращаем JSON-массив с новыми ключами фактов
         return (
             '[{"key": "name", "value": "Анна"}, '
             '{"key": "goal", "value": "изучить Python"}, '
@@ -69,7 +71,6 @@ def test_extraction_with_new_keys_and_system_prompt(db_session: Session):
         for i in range(1, 13):
             chat(f"Сообщение {i}", db_session)
 
-    # 1. Проверяем наличие всех ожидаемых ключей в user_facts
     expected_keys = {"name", "goal", "interest", "preference", "fact"}
     facts = db_session.query(UserFact).all()
     saved_keys = {fact.key for fact in facts}
@@ -77,8 +78,6 @@ def test_extraction_with_new_keys_and_system_prompt(db_session: Session):
         f"Не все ожидаемые ключи сохранены: {saved_keys}"
     )
 
-    # 2. Проверяем, что SYSTEM_PROMPT передавался модели
-    # Ищем "персонализированный помощник" — это уникальная часть нового SYSTEM_PROMPT
     found = False
     for args, kwargs in call_args_list:
         args_repr = str(args) + str(kwargs)
@@ -86,3 +85,53 @@ def test_extraction_with_new_keys_and_system_prompt(db_session: Session):
             found = True
             break
     assert found, "SYSTEM_PROMPT не обнаружен ни в одном вызове generate_response"
+
+
+def test_contradictory_facts(db_session: Session):
+    """Проверяем, что новые факты переопределяют старые (или фиксируются изменения)."""
+    facts_sequence = [
+        ('[{"key": "lang", "value": "люблю Python"}]', "Я люблю Python"),
+        ('[{"key": "lang", "value": "ненавижу Python"}]', "Я ненавижу Python"),
+    ]
+    call_count = 0
+
+    def mock_generate_response(prompt, *args, **kwargs):
+        nonlocal call_count
+        if "Извлеки" in str(prompt) and call_count < len(facts_sequence):
+            resp = facts_sequence[call_count][0]
+            call_count += 1
+            return resp
+        return "Понял."
+
+    with patch("backend.app.services.assistant_service.MAX_HISTORY", 2), \
+         patch("backend.app.services.assistant_service.SUMMARY_TRIGGER", 2), \
+         patch("backend.app.services.assistant_service.generate_response", side_effect=mock_generate_response):
+        for _, msg in facts_sequence:
+            chat(msg, db_session)
+        chat("Запомни всё.", db_session)
+
+    lang_facts = db_session.query(UserFact).filter_by(key="lang").all()
+    assert len(lang_facts) >= 1, "Факты с ключом 'lang' не найдены"
+    assert any("ненавижу" in f.value for f in lang_facts)
+
+
+def test_multiple_consolidations(db_session: Session):
+    """Более 20 сообщений — несколько раундов консолидации."""
+    facts = [("fact", f"Сообщение {i}") for i in range(1, 21)]
+    extraction_response = "[" + ", ".join(
+        [f'{{"key": "{k}", "value": "{v}"}}' for k, v in facts]
+    ) + "]"
+
+    def mock_generate_response(prompt, *args, **kwargs):
+        if "Извлеки" in str(prompt):
+            return extraction_response
+        return "Ок."
+
+    with patch("backend.app.services.assistant_service.MAX_HISTORY", 2), \
+         patch("backend.app.services.assistant_service.SUMMARY_TRIGGER", 2), \
+         patch("backend.app.services.assistant_service.generate_response", side_effect=mock_generate_response):
+        for _, msg in facts:
+            chat(msg, db_session)
+        chat("Запомни всё.", db_session)
+
+    assert db_session.query(UserFact).count() >= len(facts)
