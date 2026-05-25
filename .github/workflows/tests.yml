@@ -42,8 +42,7 @@ jobs:
   benchmark:
     name: Run memory benchmark
     runs-on: ubuntu-latest
-    # убрали strategy/matrix, чтобы не было конфликта
-
+    needs: test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
