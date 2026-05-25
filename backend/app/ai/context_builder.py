@@ -39,12 +39,15 @@ def build_context(history, user_input,summary: str = None , user_facts:list =Non
     # Clean the history 
     #Keep only messages that have both 'role' and 'content ' (Not None and not empty)
     # Rebuild each  element  as a new dict (just in case , to avoid mutating the original objects)
-    clean_history = [
-    {'role': m['role'], 'content': str(m['content'])}
-    for m in history
-    if m.get('role') and m.get('content')
-]
-    
+    clean_history = []
+    for m in history:
+        if hasattr(m, 'role'):
+            role = m.role
+            content = m.content
+        else:
+            role = m['role']
+            content = m['content']
+        clean_history.append({'role': role, 'content': str(content)})
     
 
     # add the cleaned history to out final list 

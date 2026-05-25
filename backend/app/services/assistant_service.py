@@ -30,9 +30,10 @@ from backend.app.core.logging_utils import log_execution_time
 
 
 #Блок 2: Парсинг ответов модели (_extract_json)
-def _extract_json(text: str) -> list | None:
+def _extract_json(text: str | None) -> list | None:
     """Пытается извлечь JSON из текста, даже если он обёрнут в markdown-код."""
-    #
+    if text is None:
+        return None
     # Ищем JSON внутри markdown-кода
     match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
     if match:
@@ -43,10 +44,10 @@ def _extract_json(text: str) -> list | None:
         if match:
             text = match.group(0)
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, list) else None
     except json.JSONDecodeError:
         return None
-
 
 MAX_HISTORY = 10
 
