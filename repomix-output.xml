@@ -1,0 +1,1555 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.github/workflows/tests.yml
+.gitignore
+backend/app/ai/__init__.py
+backend/app/ai/context_builder.py
+backend/app/ai/memory_orchestrator.py
+backend/app/ai/models.py
+backend/app/ai/prompts.py
+backend/app/ai/provider.py
+backend/app/core/config.py
+backend/app/core/logger.py
+backend/app/core/logging_utils.py
+backend/app/database/connection.py
+backend/app/database/models.py
+backend/app/database/repository.py
+backend/app/services/assistant_service.py
+backend/app/services/cli.py
+backend/app/services/main.py
+backend/Dockerfile
+chroma_db_mem0/420a6f92-c399-4a17-ab37-d6b034fff401/data_level0.bin
+chroma_db_mem0/420a6f92-c399-4a17-ab37-d6b034fff401/header.bin
+chroma_db_mem0/420a6f92-c399-4a17-ab37-d6b034fff401/length.bin
+chroma_db_mem0/420a6f92-c399-4a17-ab37-d6b034fff401/link_lists.bin
+docker-compose.yml
+frontend/.gitignore
+frontend/Dockerfile
+frontend/nginx.conf
+frontend/package.json
+frontend/public/favicon.ico
+frontend/public/index.html
+frontend/public/logo192.png
+frontend/public/logo512.png
+frontend/public/manifest.json
+frontend/public/robots.txt
+frontend/README.md
+frontend/src/App.css
+frontend/src/App.js
+frontend/src/App.test.js
+frontend/src/index.css
+frontend/src/index.js
+frontend/src/logo.svg
+frontend/src/reportWebVitals.js
+frontend/src/setupTests.js
+git
+init_db.py
+requirements.txt
+tests/test_memory_manual.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="backend/app/ai/memory_orchestrator.py">
+import os 
+from mem0 import Memory
+
+MEM0_CONFIG = {
+    "llm": {
+        "provider": "ollama",
+        "config": {
+            "model": os.getenv("AI_MODEL", "gemma4:31b-cloud"),
+            "ollama_base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        }
+    },
+    "embedder": {
+        "provider": "ollama",
+        "config": {
+            "model": "nomic-embed-text",
+            "ollama_base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        }
+    },
+    "vector_store": {
+        "provider": "chroma",
+        "config": {
+            "collection_name": "mem0_memory",
+            "path": os.path.join(os.getcwd(), "chroma_db_mem0")
+        }
+    },
+    "disable_telemetry": True
+}
+
+class MemoryOrchestrator:
+    def __init__(self):
+        self.memory = Memory.from_config(MEM0_CONFIG)
+
+    def add_user_memory(self, user_id: str, text: str):
+        """Сохраняет или обновляет важные жизненные факты пользователя из текста."""
+        # В этой версии add принимает user_id как отдельный параметр
+        return self.memory.add(text, user_id=user_id)
+
+    def get_user_fact(self, user_id: str) -> list[str]:
+        """Возвращает список всех структурированных фактов, которые ИИ запомнил о тебе."""
+        # get_all также, вероятно, поддерживает прямой user_id (ошибок не было)
+        memories = self.memory.get_all(user_id=user_id)
+        facts = [m['text'] for m in memories if 'text' in m]
+        return facts
+
+    def search_relevant_facts(self, user_id: str, query: str, limit: int = 3) -> str:
+        """
+        Ищет факты, которые подходят под текущую тему разговора.
+        search требует передачи user_id внутри filters
+        """
+        results = self.memory.search(query, filters={"user_id": user_id}, limit=limit)
+        if not results:
+            return ""
+        relevant_facts = [r['text'] for r in results if 'text' in r]
+        return "\n".join([f'-{fact}' for fact in relevant_facts])
+
+
+memory_orchestrator = MemoryOrchestrator()
+</file>
+
+<file path="git">
+
+</file>
+
+<file path="init_db.py">
+from backend.app.database.models import Base
+
+from backend.app.database.connection import engine
+
+
+def intt_db():
+    print("Connecting to the database and creating tables")
+
+    Base.metadata.create_all(bind=engine)
+    print('Done! Tables created in the assistant database.')
+
+
+if __name__ == "__main__":
+    intt_db()
+</file>
+
+<file path="tests/test_memory_manual.py">
+import requests
+import time
+
+BASE_URL = "http://localhost:8000/chat"
+USER_ID = "benchmark_user"
+
+facts = [
+    "Меня зовут Андрей",
+    "Я живу в Германии",
+    "Мой любимый язык программирования — Python",
+    "Я работаю архитектором ПО",
+    "Я люблю готовить пасту",
+    "У меня есть собака по кличке Рекс",
+    "Я изучаю немецкий язык",
+    "Моё хобби — велоспорт",
+    "Я предпочитаю чай кофе",
+    "Мой любимый фильм — Матрица"
+]
+
+print("=== Заполняем память 10 фактами ===")
+for i, fact in enumerate(facts, 1):
+    resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": fact})
+    print(f"{i}. Отправлено: '{fact}' | Статус: {resp.status_code}")
+    time.sleep(0.5)
+
+print("\n=== Запрашиваем всё, что ассистент знает ===")
+resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": "Расскажи, что ты обо мне знаешь"})
+print(f"Статус: {resp.status_code}")
+print(f"Ответ:\n{resp.json().get('response', '')}")
+</file>
+
+<file path="backend/app/ai/__init__.py">
+
+</file>
+
+<file path="backend/app/ai/models.py">
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings
+
+class Fact(BaseModel):
+    """Единичный факт о пользователе в формате key-value."""
+    key: str = Field(description="Тип факта: name, goal, interest, preference, fact")
+    value: str = Field(description="Содержимое факта")
+
+class FactsResponse(BaseModel):
+    """
+    Контейнер для списка фактов.
+    Может использоваться в API или для валидации упакованного ответа.
+    """
+    facts: list[Fact] = Field(default_factory=list)
+
+class Settings(BaseSettings):
+    """Настройки AI-модуля, загружаемые из переменных окружения."""
+    model_name: str = "llama3"
+    ollama_host: str = "http://localhost:11434"
+
+    class Config:
+        env_file = ".env"
+</file>
+
+<file path="backend/app/core/logger.py">
+import logging
+import sys
+
+def setup_logger(name: str = 'assistant' , level: int = logging.DEBUG) -> logging.Logger:
+     """Настраивает и возвращает логгер с заданным именем и уровнем."""
+
+     logger = logging.getLogger(name)
+
+     # Чтобы не дублировать обработчики при повторных вызовах
+     if logger.handlers:
+          return logger
+     
+
+     logger.setLevel(level)
+
+
+        # Формат: время - имя - уровень - сообщени
+
+     formatter = logging.Formatter(
+          "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+          datefmt="%Y-%m-%d %H:%M:%S"
+          
+     )
+
+     # Вывод в консоль
+
+     console_handler = logging.StreamHandler(sys.stdout)
+
+     console_handler.setFormatter(formatter)
+
+     logger.addHandler(console_handler)
+     # Опционально: вывод в файл (раскомментируй, если хочешь сохранять логи)
+    # file_handler = logging.FileHandler("assistant.log", encoding="utf-8")
+    # file_handler.setFormatter(formatter)
+    # logger.addHandler(file_handler)
+
+     return logger
+
+logger = setup_logger()
+</file>
+
+<file path="backend/app/core/logging_utils.py">
+import time
+from functools import wraps
+from typing import Callable, Any
+
+# Используем единый настроенный логгер проекта
+from backend.app.core.logger import logger
+
+def log_execution_time(func: Callable) -> Callable:
+    """
+    Декоратор для логирования времени выполнения синхронной функции
+    в миллисекундах. Уровень логирования: DEBUG.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> Any:
+        start_time = time.perf_counter()
+        try:
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                f"Function '{func.__name__}' executed in {elapsed_ms:.2f} ms",
+                extra={"function": func.__name__, "duration_ms": elapsed_ms}
+            )
+    return wrapper
+</file>
+
+<file path="backend/Dockerfile">
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ backend/
+
+EXPOSE 8000
+ENV PYTHONPATH=/app
+
+CMD ["uvicorn", "backend.app.services.main:app", "--host", "0.0.0.0", "--port", "8000"]
+</file>
+
+<file path="docker-compose.yml">
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - AI_MODEL=gemma3:12b
+    volumes:
+      - backend_data:/app
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS="*"
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  ollama_data:
+</file>
+
+<file path="frontend/Dockerfile">
+# Этап 1: сборка React-приложения
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+
+COPY . .
+RUN npm run build
+
+# Этап 2: веб-сервер Nginx
+FROM nginx:alpine
+COPY --from=build /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+</file>
+
+<file path="frontend/nginx.conf">
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+}
+</file>
+
+<file path="frontend/package.json">
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^13.5.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
+</file>
+
+<file path="frontend/public/index.html">
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Web site created using create-react-app"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <!--
+      manifest.json provides metadata used when your web app is installed on a
+      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+    -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <!--
+      Notice the use of %PUBLIC_URL% in the tags above.
+      It will be replaced with the URL of the `public` folder during the build.
+      Only files inside the `public` folder can be referenced from the HTML.
+
+      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
+      work correctly both with client-side routing and a non-root public URL.
+      Learn how to configure a non-root public URL by running `npm run build`.
+    -->
+    <title>React App</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <!--
+      This HTML file is a template.
+      If you open it directly in the browser, you will see an empty page.
+
+      You can add webfonts, meta tags, or analytics to this file.
+      The build step will place the bundled scripts into the <body> tag.
+
+      To begin the development, run `npm start` or `yarn start`.
+      To create a production bundle, use `npm run build` or `yarn build`.
+    -->
+  </body>
+</html>
+</file>
+
+<file path="frontend/public/manifest.json">
+{
+  "short_name": "React App",
+  "name": "Create React App Sample",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
+</file>
+
+<file path="frontend/public/robots.txt">
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Disallow:
+</file>
+
+<file path="frontend/README.md">
+# Getting Started with Create React App
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+## Available Scripts
+
+In the project directory, you can run:
+
+### `npm start`
+
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+
+The page will reload when you make changes.\
+You may also see any lint errors in the console.
+
+### `npm test`
+
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+
+### `npm run build`
+
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
+
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
+
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+
+### `npm run eject`
+
+**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+
+If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+
+You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+
+## Learn More
+
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+
+To learn React, check out the [React documentation](https://reactjs.org/).
+
+### Code Splitting
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+
+### Analyzing the Bundle Size
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+
+### Making a Progressive Web App
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+
+### Advanced Configuration
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+
+### Deployment
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+
+### `npm run build` fails to minify
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+</file>
+
+<file path="frontend/src/App.test.js">
+import { render, screen } from '@testing-library/react';
+import App from './App';
+
+test('renders learn react link', () => {
+  render(<App />);
+  const linkElement = screen.getByText(/learn react/i);
+  expect(linkElement).toBeInTheDocument();
+});
+</file>
+
+<file path="frontend/src/index.css">
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+</file>
+
+<file path="frontend/src/index.js">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+import reportWebVitals from './reportWebVitals';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// If you want to start measuring performance in your app, pass a function
+// to log results (for example: reportWebVitals(console.log))
+// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+reportWebVitals();
+</file>
+
+<file path="frontend/src/logo.svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 841.9 595.3"><g fill="#61DAFB"><path d="M666.3 296.5c0-32.5-40.7-63.3-103.1-82.4 14.4-63.6 8-114.2-20.2-130.4-6.5-3.8-14.1-5.6-22.4-5.6v22.3c4.6 0 8.3.9 11.4 2.6 13.6 7.8 19.5 37.5 14.9 75.7-1.1 9.4-2.9 19.3-5.1 29.4-19.6-4.8-41-8.5-63.5-10.9-13.5-18.5-27.5-35.3-41.6-50 32.6-30.3 63.2-46.9 84-46.9V78c-27.5 0-63.5 19.6-99.9 53.6-36.4-33.8-72.4-53.2-99.9-53.2v22.3c20.7 0 51.4 16.5 84 46.6-14 14.7-28 31.4-41.3 49.9-22.6 2.4-44 6.1-63.6 11-2.3-10-4-19.7-5.2-29-4.7-38.2 1.1-67.9 14.6-75.8 3-1.8 6.9-2.6 11.5-2.6V78.5c-8.4 0-16 1.8-22.6 5.6-28.1 16.2-34.4 66.7-19.9 130.1-62.2 19.2-102.7 49.9-102.7 82.3 0 32.5 40.7 63.3 103.1 82.4-14.4 63.6-8 114.2 20.2 130.4 6.5 3.8 14.1 5.6 22.5 5.6 27.5 0 63.5-19.6 99.9-53.6 36.4 33.8 72.4 53.2 99.9 53.2 8.4 0 16-1.8 22.6-5.6 28.1-16.2 34.4-66.7 19.9-130.1 62-19.1 102.5-49.9 102.5-82.3zm-130.2-66.7c-3.7 12.9-8.3 26.2-13.5 39.5-4.1-8-8.4-16-13.1-24-4.6-8-9.5-15.8-14.4-23.4 14.2 2.1 27.9 4.7 41 7.9zm-45.8 106.5c-7.8 13.5-15.8 26.3-24.1 38.2-14.9 1.3-30 2-45.2 2-15.1 0-30.2-.7-45-1.9-8.3-11.9-16.4-24.6-24.2-38-7.6-13.1-14.5-26.4-20.8-39.8 6.2-13.4 13.2-26.8 20.7-39.9 7.8-13.5 15.8-26.3 24.1-38.2 14.9-1.3 30-2 45.2-2 15.1 0 30.2.7 45 1.9 8.3 11.9 16.4 24.6 24.2 38 7.6 13.1 14.5 26.4 20.8 39.8-6.3 13.4-13.2 26.8-20.7 39.9zm32.3-13c5.4 13.4 10 26.8 13.8 39.8-13.1 3.2-26.9 5.9-41.2 8 4.9-7.7 9.8-15.6 14.4-23.7 4.6-8 8.9-16.1 13-24.1zM421.2 430c-9.3-9.6-18.6-20.3-27.8-32 9 .4 18.2.7 27.5.7 9.4 0 18.7-.2 27.8-.7-9 11.7-18.3 22.4-27.5 32zm-74.4-58.9c-14.2-2.1-27.9-4.7-41-7.9 3.7-12.9 8.3-26.2 13.5-39.5 4.1 8 8.4 16 13.1 24 4.7 8 9.5 15.8 14.4 23.4zM420.7 163c9.3 9.6 18.6 20.3 27.8 32-9-.4-18.2-.7-27.5-.7-9.4 0-18.7.2-27.8.7 9-11.7 18.3-22.4 27.5-32zm-74 58.9c-4.9 7.7-9.8 15.6-14.4 23.7-4.6 8-8.9 16-13 24-5.4-13.4-10-26.8-13.8-39.8 13.1-3.1 26.9-5.8 41.2-7.9zm-90.5 125.2c-35.4-15.1-58.3-34.9-58.3-50.6 0-15.7 22.9-35.6 58.3-50.6 8.6-3.7 18-7 27.7-10.1 5.7 19.6 13.2 40 22.5 60.9-9.2 20.8-16.6 41.1-22.2 60.6-9.9-3.1-19.3-6.5-28-10.2zM310 490c-13.6-7.8-19.5-37.5-14.9-75.7 1.1-9.4 2.9-19.3 5.1-29.4 19.6 4.8 41 8.5 63.5 10.9 13.5 18.5 27.5 35.3 41.6 50-32.6 30.3-63.2 46.9-84 46.9-4.5-.1-8.3-1-11.3-2.7zm237.2-76.2c4.7 38.2-1.1 67.9-14.6 75.8-3 1.8-6.9 2.6-11.5 2.6-20.7 0-51.4-16.5-84-46.6 14-14.7 28-31.4 41.3-49.9 22.6-2.4 44-6.1 63.6-11 2.3 10.1 4.1 19.8 5.2 29.1zm38.5-66.7c-8.6 3.7-18 7-27.7 10.1-5.7-19.6-13.2-40-22.5-60.9 9.2-20.8 16.6-41.1 22.2-60.6 9.9 3.1 19.3 6.5 28.1 10.2 35.4 15.1 58.3 34.9 58.3 50.6-.1 15.7-23 35.6-58.4 50.6zM320.8 78.4z"/><circle cx="420.9" cy="296.5" r="45.7"/><path d="M520.5 78.1z"/></g></svg>
+</file>
+
+<file path="frontend/src/reportWebVitals.js">
+const reportWebVitals = onPerfEntry => {
+  if (onPerfEntry && onPerfEntry instanceof Function) {
+    import('web-vitals').then(({ getCLS, getFID, getFCP, getLCP, getTTFB }) => {
+      getCLS(onPerfEntry);
+      getFID(onPerfEntry);
+      getFCP(onPerfEntry);
+      getLCP(onPerfEntry);
+      getTTFB(onPerfEntry);
+    });
+  }
+};
+
+export default reportWebVitals;
+</file>
+
+<file path="frontend/src/setupTests.js">
+// jest-dom adds custom jest matchers for asserting on DOM nodes.
+// allows you to do things like:
+// expect(element).toHaveTextContent(/react/i)
+// learn more: https://github.com/testing-library/jest-dom
+import '@testing-library/jest-dom';
+</file>
+
+<file path="frontend/.gitignore">
+# Виртуальное окружение и Python-кэш
+venv/
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.pyc
+
+# Фронтенд
+node_modules/
+
+# Базы данных
+*.db
+*.sqlite3
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+
+# Файлы окружения
+.env
+
+# Собранные файлы
+dist/
+build/
+*.egg-info/
+
+# Логи
+*.log
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+</file>
+
+<file path="frontend/src/App.css">
+:root {
+  --bg-deep: #0d0d0f;
+  --bg-card: #232327;
+  --bg-toolbar: rgba(28, 28, 32, 0.65);
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.4);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.12);
+  --radius-lg: 30px;
+  --radius-full: 999px;
+  --shadow-card: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px -5px var(--accent-glow);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: radial-gradient(ellipse at 50% 30%, #1a1a2e 0%, #0d0d0f 70%);
+  background-color: var(--bg-deep);
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Чат-контейнер */
+.chat-container {
+  width: 100%;
+  max-width: 850px;
+  height: 90vh;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 20px;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Заголовок */
+.chat-header {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+}
+
+.chat-header h1 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+/* Кнопка загрузки фактов */
+.test-facts-button {
+  background: var(--bg-deep);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.test-facts-button:hover:not(:disabled) {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.test-facts-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Область сообщений */
+.chat-messages {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--bg-deep);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.empty-chat {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-top: 80px;
+  font-size: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.8;
+}
+
+.empty-chat-icon {
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+/* Сообщения */
+.message {
+  display: flex;
+  animation: messageIn 0.35s ease-out;
+}
+
+.user-message { justify-content: flex-end; }
+.assistant-message { justify-content: flex-start; }
+
+.message-bubble {
+  max-width: 75%;
+  padding: 14px 20px;
+  border-radius: 24px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+}
+
+.user-message .message-bubble {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border-bottom-right-radius: 6px;
+}
+
+.assistant-message .message-bubble {
+  background: #1a1f2e;
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-bottom-left-radius: 6px;
+}
+
+.assistant-message .message-bubble:hover {
+  border-color: #4a5568;
+}
+
+/* Индикатор набора текста */
+.typing-indicator {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: typingBounce 1.2s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
+  30% { transform: translateY(-8px); opacity: 1; }
+}
+
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Форма ввода */
+.chat-input-form {
+  display: flex;
+  padding: 16px 24px;
+  background: transparent;
+  border-top: 1px solid var(--border-subtle);
+  gap: 12px;
+}
+
+.chat-input-form input {
+  flex: 1;
+  padding: 14px 20px;
+  background: #1a1f2e;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.chat-input-form input::placeholder { color: var(--text-muted); }
+.chat-input-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+
+.chat-input-form button {
+  padding: 14px 28px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chat-input-form button:hover:not(:disabled) {
+  background: #2563eb;
+  box-shadow: 0 4px 14px rgba(59,130,246,0.4);
+  transform: translateY(-1px);
+}
+
+.chat-input-form button:disabled {
+  background: var(--border-light);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Скроллбар */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+</file>
+
+<file path=".gitignore">
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# Node
+node_modules/
+
+# VSCode
+.vscode/
+
+# Logs
+*.log
+
+# Chroma vector store
+chroma_db/
+
+# Documentation builds
+docs/
+
+# Specific junk files
+26.1.1
+</file>
+
+<file path="backend/app/ai/prompts.py">
+SYSTEM_PROMPT = (
+    "Ты — AI-ассистент по бэкенд-разработке и Python, персонализированный помощник. "
+    "У тебя есть доступ к сохранённым фактам о пользователе (user_facts). "
+    "Используй эти факты для адаптации ответов: обращайся по имени, учитывай цели, "
+    "интересы и предпочтения пользователя, когда это уместно.\n"
+    "Отвечай кратко, по существу, без примеров кода, если тебя не просят. "
+    "Не давай длинных обучающих материалов.\n"
+    "Если пользователь делится новым фактом о себе — кратко подтверди, что запомнил, "
+    "и в дальнейшем используй его для персонализации. "
+    "Когда пользователь спрашивает «Что ты обо мне знаешь?» или задаёт похожий вопрос, "
+    "чётко перечисли все известные тебе факты из памяти."
+)
+</file>
+
+<file path="backend/app/core/config.py">
+# Она нужна, чтобы загрузить переменные из файла .env в системные переменные окружения.
+from dotenv import load_dotenv
+
+import os
+
+
+# Вызываем load_dotenv() — она ищет файл .env в корне проекта,
+# читает его и делает все переменные оттуда доступными через os.getenv().
+load_dotenv()
+
+API_KEY = os.getenv('OPENROUTER_API')
+
+MODEL = os.getenv("MODEL")
+</file>
+
+<file path="backend/app/database/models.py">
+import enum
+
+from datetime import datetime
+
+from sqlalchemy import Text , DateTime , Enum , func , Index
+
+from sqlalchemy.orm import DeclarativeBase , Mapped  , mapped_column
+
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class MessageRole(str, enum.Enum):
+    USER = 'user'
+    ASSISTANT = 'assistant'
+    SYSTEM = 'system'
+
+
+class Message(Base):
+    __tablename__ = 'messages'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    role: Mapped[MessageRole] = mapped_column(
+        Enum(MessageRole , name='message_role_enum' , create_type=True),
+        nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text , nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    __table_args__ = (
+        Index('ix_messages_created_at' ,"created_at" ),
+    )
+</file>
+
+<file path="backend/app/services/cli.py">
+import sys 
+
+import os 
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+
+
+from backend.app.database.connection import SessionLocal , engine
+
+from backend.app.database.models import Base , Message
+
+from backend.app.services.assistant_service import chat
+
+from backend.app.core.logger import logger
+
+def main():
+    logger.info("Запуск CLI-assistant")
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        while True:
+            user_input = input('You:')
+            if user_input == 'exit':
+                break
+            logger.debug('Получен ввод от пользователя ')
+            answer = chat(user_input, db)
+            print(f'AI: {answer}')
+    finally:
+        db.commit()
+        db.close()
+        logger.info("Ceccя BD Успешно закрыта , выход из CLI")
+
+if __name__ =="__main__":
+    main()
+</file>
+
+<file path="backend/app/services/main.py">
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from backend.app.database.models import Base
+from backend.app.database.connection import engine
+from backend.app.database import models
+from backend.app.services.assistant_service import chat as assistant_chat
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from backend.app.database.connection import get_db
+
+
+app = FastAPI()
+
+
+Base.metadata.create_all(bind=engine)
+
+
+origins = [
+    "http://localhost:3000"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+
+@app.get('/health')
+def health():
+    return {'server': 'running'}
+
+
+
+@app.post("/chat")
+def chat(data: dict, db: Session = Depends(get_db)):
+    msg = data.get('message')
+
+    # --- Обработка специальной команды /test ---
+    if msg == '/test':
+        
+        return {
+            "response": "Команда /test временно недоступна. Новая память на базе Mem0 активна!",
+            "original": msg
+        }
+        
+
+    # --- Стандартная проверка сообщения ---
+    if msg is None or msg.strip() == "":
+        return {"error": "Сообщение не может быть пустым или состоять из одних пробелов"}
+    if len(msg) > 2000:   # лимит увеличен до 2000 символов
+        return {'error': 'Сообщение слишком длинное (максимум 2000 символов)'}
+
+    # --- Отправляем сообщение ассистенту ---
+    response = assistant_chat(msg, db)
+    return {
+        "response": response,
+        "original": msg
+    }
+</file>
+
+<file path="frontend/src/App.js">
+// src/App.js
+import React, { useState, useRef, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const addMessage = (text, sender) => {
+    setMessages(prev => [...prev, { text, sender }]);
+  };
+
+  const sendMessage = async (messageText) => {
+    if (!messageText.trim() || isLoading) return;
+
+    const userMessage = messageText.trim();
+    addMessage(userMessage, 'user');
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ошибка сервера: ${response.status}`);
+      }
+
+      const data = await response.json();
+      addMessage(data.response, 'assistant');
+    } catch (error) {
+      console.error('Ошибка при отправке сообщения:', error);
+      addMessage('Извините, произошла ошибка при обращении к серверу.', 'assistant');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    sendMessage(inputValue);
+  };
+
+  const handleTestFacts = () => {
+    sendMessage('/test');
+  };
+
+  return (
+    <div className="chat-container">
+      <header className="chat-header">
+        <h1>Prototype</h1>
+        <button
+          className="test-facts-button"
+          onClick={handleTestFacts}
+          disabled={isLoading}
+        >
+          Загрузить тестовые факты
+        </button>
+      </header>
+
+      <div className="chat-messages">
+        {messages.length === 0 && (
+          <div className="empty-chat">
+            <p>Чем я могу помочь?</p>
+          </div>
+        )}
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            className={`message ${msg.sender === 'user' ? 'user-message' : 'assistant-message'}`}
+          >
+            <div className="message-bubble">
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="message assistant-message">
+            <div className="message-bubble typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      <form className="chat-input-form" onSubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="Введите сообщение..."
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          disabled={isLoading}
+          autoFocus
+        />
+        <button type="submit" disabled={isLoading || !inputValue.trim()}>
+          Отправить
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default App;
+</file>
+
+<file path=".github/workflows/tests.yml">
+name: CI - Tests and Benchmark
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run tests with coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --cov=backend --cov-report=term --cov-report=html --cov-fail-under=80
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+
+  benchmark:
+    name: Run memory benchmark
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run benchmark
+        run: |
+          echo "=== RAG Memory Benchmark ==="
+          python tests/benchmark_rag.py
+</file>
+
+<file path="backend/app/database/repository.py">
+from typing import Sequence
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from backend.app.database.models import Message
+
+
+def save_message(db: Session , role: str , content:str) -> Message:
+    new_message = Message(role=role , content=content)
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
+    return new_message
+
+
+def get_last_messages(db: Session, limit: int =10) -> list[Message]:
+    stms = select(Message).order_by(Message.created_at.desc()).limit(limit)
+    message: Sequence[Message] = db.scalars(stms).all()
+    return list(message[::-1])
+</file>
+
+<file path="backend/app/ai/context_builder.py">
+from backend.app.ai.prompts import SYSTEM_PROMPT
+
+def build_context(history, user_input,summary: str = None , user_facts:list =None):
+
+    """
+    Builds the full context for sending to the LLM
+    Acceptc:
+            history - list of dicts with keys 'role' and 'content' (from DB or other source)
+
+            user_input - string with  the user's new message 
+
+            message = list of dicts ready to be passed to genetate_response()
+
+                    """
+    # statr with the System message - Instruction for the model
+     #Если есть факты о пользователе, добавляем их как системную информацию
+    message = [
+        {
+            'role': 'system',
+            'content': SYSTEM_PROMPT or 'You are assistant'
+        }
+    ]
+    if user_facts:
+        facts_text = ' Факты о пользователе: \n' + '\n'.join(
+    [f'- {str(f.key)}: {str(f.value)}' for f in user_facts]
+)
+        message.append({
+            'role': 'system',
+            'content': facts_text
+        })
+    if summary:
+        message.append({
+            'role': 'system',
+            'content': f"Контекст предыдущего диалога (НЕ обсуждай его, если не спросят, просто используй для понимания):\n{str(summary)}"})
+
+
+    # Clean the history 
+    #Keep only messages that have both 'role' and 'content ' (Not None and not empty)
+    # Rebuild each  element  as a new dict (just in case , to avoid mutating the original objects)
+    clean_history = []
+    for m in history:
+        if hasattr(m, 'role'):
+            role = m.role
+            content = m.content
+        else:
+            role = m['role']
+            content = m['content']
+        clean_history.append({'role': role, 'content': str(content)})
+    
+
+    # add the cleaned history to out final list 
+    message.extend(clean_history)
+
+    # Finally , add the current user query
+    message.append({
+    'role': 'user',
+    'content': str(user_input)
+})
+    # return the full context
+    return message
+</file>
+
+<file path="backend/app/ai/provider.py">
+import requests
+import os
+from backend.app.core.logger import logger
+from backend.app.core.logging_utils import log_execution_time
+
+
+MODEL = os.getenv("AI_MODEL", "gemma4:31b-cloud")
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+
+@log_execution_time
+def generate_response(message: list[dict]) -> str:
+    """ The process of sending a message"""
+    logger.debug("Отправка запроса к Ollama: %d сообщений", len(message))
+    try:
+
+        # Защита от несериализуемых объектов: превращаем всё в строки
+        safe_messages = []
+        for msg in message:
+            safe_msg = {
+                'role': str(msg.get('role', 'user')),
+                'content': str(msg.get('content', ''))
+            }
+            safe_messages.append(safe_msg)
+
+        response = requests.post(
+            f"{OLLAMA_HOST}/api/chat",
+            json={
+                "model": MODEL,
+                "messages": safe_messages,
+                "stream": False,
+                'options': {
+                    'num_predict': 4096
+                }
+            },  timeout=120
+        )
+        # for debugging , print status and raw response
+        # print("STATUS:", response.status_code)
+        # print("TEXT:", response.text)
+        response.raise_for_status()
+
+        data = response.json()
+        answer = data['message']['content']
+        logger.info('Ответ получен (длина %d символов)', len(answer))
+        return answer
+    except requests.RequestException as e:
+        logger.error("Ошибка при обращении к Ollama: %s", e)
+        return "Извините, произошла ошибка при обращении к языковой модели."
+    except (KeyError, ValueError)as e:
+        logger.error("Ошибка парсинга ответа от Ollama: %s", e)
+        return "Извините, ответ модели был в неожиданном формате."
+</file>
+
+<file path="requirements.txt">
+dotenv
+openai
+fastapi
+python-dotenv
+sqlalchemy
+httpx
+requests
+pydantic 
+pytest
+pytest-cov
+uvicorn
+chromadb>=0.4.0,<0.6.0
+sentence-transformers>=2.2.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+mem0ai
+langchain
+langchain-community
+pgvector
+psycopg2-binary
+</file>
+
+<file path="backend/app/services/assistant_service.py">
+from sqlalchemy.orm import Session
+
+from backend.app.database.repository import save_message, get_last_messages
+from backend.app.ai.memory_orchestrator import memory_orchestrator
+from backend.app.ai.context_builder import build_context
+from backend.app.ai.provider import generate_response
+
+
+def chat(user_input: str, db: Session, user_id: str = 'default_user') -> str:
+    """
+    Главная функция общения с ассистентом.
+    Соединяет реляционную базу сообщений, память Mem0 и модель Ollama.
+    """
+
+    save_message(db, role='user', content=user_input)
+
+    history = get_last_messages(db, limit=10)
+
+    relevant_facts_string = memory_orchestrator.search_relevant_facts(user_id, query=user_input)
+
+
+    context_messages = build_context(history, user_input , user_facts=relevant_facts_string)
+
+    answer = generate_response(context_messages)
+
+    save_message(db , role='assistant' , content=answer)
+
+    memory_orchestrator.add_user_memory(user_id ,  text=user_input)
+
+    return answer
+</file>
+
+</files>

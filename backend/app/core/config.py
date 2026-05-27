@@ -9,7 +9,7 @@ import os
 # читает его и делает все переменные оттуда доступными через os.getenv().
 load_dotenv()
 
-API_KEY = os.getenv('OPENROUTER_API')
+
 
 MODEL = os.getenv("MODEL")
 

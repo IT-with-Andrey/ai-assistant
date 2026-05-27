@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.database.connection import Base, engine
+from backend.app.database.models import Base
+from backend.app.database.connection import engine
 from backend.app.database import models
 from backend.app.services.assistant_service import chat as assistant_chat
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from backend.app.database.connection import get_db
-from backend.app.services.cli import auto_test_memory
+
 
 app = FastAPI()
 
@@ -44,11 +45,12 @@ def chat(data: dict, db: Session = Depends(get_db)):
 
     # --- Обработка специальной команды /test ---
     if msg == '/test':
-        auto_test_memory(db)
+        
         return {
-            "response": "Тестовые факты загружены. Теперь спросите: Что ты знаешь обо мне?",
+            "response": "Команда /test временно недоступна. Новая память на базе Mem0 активна!",
             "original": msg
         }
+        
 
     # --- Стандартная проверка сообщения ---
     if msg is None or msg.strip() == "":

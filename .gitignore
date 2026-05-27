@@ -23,16 +23,13 @@ node_modules/
 .vscode/
 
 # Logs
-*.log".env" 
+*.log
 
-# Chroma (векторная БД)
+# Chroma vector store
 chroma_db/
 
-
-# Документация (генерируется локально)
+# Documentation builds
 docs/
 
-
-# Всякие временные и сгенерированные файлы
+# Specific junk files
 26.1.1
-PROJECT_DIAGRAM.html
