@@ -5,10 +5,12 @@ import os
 from backend.app.core.logger import logger
 from backend.app.core.logging_utils import log_execution_time
 
+from backend.app.core.config import settings
 
-MODEL = os.getenv("AI_MODEL", "gemma4:31b-cloud")
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+MODEL = settings.AI_MODEL
+
+OLLAMA_HOST = settings.OLLAMA_HOST
 
 
 @log_execution_time

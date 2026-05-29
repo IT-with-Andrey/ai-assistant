@@ -46,7 +46,8 @@ backend/app/ai/__init__.py
 backend/app/ai/context_builder.py
 backend/app/ai/memory_orchestrator.py
 backend/app/ai/models.py
-backend/app/ai/prompts.py
+backend/app/ai/persona_manager.py
+backend/app/ai/personas.py
 backend/app/ai/provider.py
 backend/app/core/config.py
 backend/app/core/logger.py
@@ -91,15 +92,95 @@ tests/test_memory_manual.py
 <files>
 This section contains the contents of the repository's files.
 
+<file path="backend/app/ai/persona_manager.py">
+from backend.app.ai.personas import PERSONAS
+
+from backend.app.ai.memory_orchestrator import memory_orchestrator
+
+
+class PersonaManager:
+    @staticmethod
+    def get_persona_for_user(user_id: str) -> dict:
+        facts = memory_orchestrator.get_user_fact(user_id)
+        role = "default"
+        for fact in facts:
+            if isinstance(fact,str) and fact.startswith("assistant_role:"):
+                role = fact.split(":",1)[1].strip()
+                break
+        return PERSONAS.get(role,PERSONAS['default'])
+    @staticmethod
+    def validate_role(role_name: str) -> bool:
+        return role_name in PERSONAS
+    
+    @staticmethod
+    def get_available_role() -> list[dict]:
+        return [{'id': key , "display_name": val["display_name"]} for key, val in PERSONAS.items()]
+</file>
+
+<file path="backend/app/ai/personas.py">
+# backend/app/ai/personas.py
+
+PERSONAS = {
+    "default": {
+        "display_name": "Универсальный помощник",
+        "system_prompt": (
+            "Ты — персональный AI-ассистент. "
+            "Твоя задача — помогать пользователю в любых вопросах, используя сохранённые факты о нём. "
+            "Отвечай кратко, по существу. Если пользователь делится фактом о себе — запоминай. "
+            "Если пользователь просит сменить твою роль — запомни это как факт assistant_role и следуй новой роли. "
+            "Всегда обновляй существующий факт assistant_role, а не создавай дубликат."
+        )
+    },
+    "python_teacher": {
+        "display_name": "Python Наставник",
+        "system_prompt": (
+            "Ты — опытный учитель Python. Твоя цель — объяснять концепции простым языком, "
+            "приводить аналогии, помогать с задачами, но не писать код за ученика целиком. "
+            "Поощряй самостоятельное решение. Используй факты о пользователе для персонализации обучения. "
+            "Всегда обновляй существующий факт assistant_role, а не создавай дубликат."
+        )
+    },
+    "fitness_coach": {
+        "display_name": "Фитнес-тренер",
+        "system_prompt": (
+            "Ты — сертифицированный фитнес-тренер. Ты помогаешь составлять программу тренировок, "
+            "даёшь советы по питанию и восстановлению. Учитывай цели и физические данные пользователя из памяти. "
+            "Будь мотивирующим, но не давай медицинских диагнозов. "
+            "Всегда обновляй существующий факт assistant_role, а не создавай дубликат."
+        )
+    },
+    "english_tutor": {
+        "display_name": "Учитель Английского",
+        "system_prompt": (
+            "Ты — персональный репетитор по английскому языку. "
+            "Твоя задача — помогать пользователю практиковать английский, объяснять грамматику, "
+            "расширять словарный запас и улучшать произношение (в рамках текстового общения). "
+            "Адаптируй сложность языка под уровень пользователя, который ты можешь понять из истории диалога. "
+            "Если пользователь делает ошибки — аккуратно исправляй их и объясняй правило. "
+            "Если пользователь просит перевести фразу — переводи и разбирай конструкцию. "
+            "Используй факты о пользователе (цели, интересы) чтобы делать уроки более персонализированными. "
+            "Всегда обновляй существующий факт assistant_role, а не создавай дубликат."
+        )
+    }
+}
+</file>
+
+<file path="backend/app/ai/__init__.py">
+
+</file>
+
 <file path="backend/app/ai/memory_orchestrator.py">
-import os 
+import os
 from mem0 import Memory
+
+# 1. Добавляем системную переменную для отключения телеметрии (самый надежный способ)
+os.environ["MEM0_TELEMETRY_DISABLED"] = "true"
 
 MEM0_CONFIG = {
     "llm": {
         "provider": "ollama",
         "config": {
-            "model": os.getenv("AI_MODEL", "gemma4:31b-cloud"),
+            "model": os.getenv("AI_MODEL", "gemma2:9b"), # Проверь модель, gemma4 еще не вышла
             "ollama_base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434")
         }
     },
@@ -116,8 +197,7 @@ MEM0_CONFIG = {
             "collection_name": "mem0_memory",
             "path": os.path.join(os.getcwd(), "chroma_db_mem0")
         }
-    },
-    "disable_telemetry": True
+    }
 }
 
 class MemoryOrchestrator:
@@ -125,87 +205,45 @@ class MemoryOrchestrator:
         self.memory = Memory.from_config(MEM0_CONFIG)
 
     def add_user_memory(self, user_id: str, text: str):
-        """Сохраняет или обновляет важные жизненные факты пользователя из текста."""
-        # В этой версии add принимает user_id как отдельный параметр
+        # Mem0 требует user_id в параметрах
         return self.memory.add(text, user_id=user_id)
 
     def get_user_fact(self, user_id: str) -> list[str]:
-        """Возвращает список всех структурированных фактов, которые ИИ запомнил о тебе."""
-        # get_all также, вероятно, поддерживает прямой user_id (ошибок не было)
-        memories = self.memory.get_all(user_id=user_id)
-        facts = [m['text'] for m in memories if 'text' in m]
+        # ИСПРАВЛЕНИЕ: используем filters вместо прямого аргумента
+        memories = self.memory.get_all(filters={"user_id": user_id})
+        
+        # Защита: в зависимости от версии mem0, данные могут быть в разных полях
+        facts = []
+        for m in memories:
+            if isinstance(m, dict):
+                facts.append(m.get('text', ''))
         return facts
 
     def search_relevant_facts(self, user_id: str, query: str, limit: int = 3) -> str:
         """
         Ищет факты, которые подходят под текущую тему разговора.
-        search требует передачи user_id внутри filters
         """
         results = self.memory.search(query, filters={"user_id": user_id}, limit=limit)
+        
         if not results:
             return ""
-        relevant_facts = [r['text'] for r in results if 'text' in r]
-        return "\n".join([f'-{fact}' for fact in relevant_facts])
 
+        # Исправленная логика:
+        relevant_facts = []
+        for r in results:
+            if isinstance(r, dict):
+                # Если это словарь, берем поле 'text'
+                fact = r.get('text', '')
+            else:
+                # Если это строка (или другой объект), берем её целиком
+                fact = str(r)
+            
+            if fact:
+                relevant_facts.append(fact)
+                
+        return "\n".join([f'- {fact}' for fact in relevant_facts])
 
 memory_orchestrator = MemoryOrchestrator()
-</file>
-
-<file path="git">
-
-</file>
-
-<file path="init_db.py">
-from backend.app.database.models import Base
-
-from backend.app.database.connection import engine
-
-
-def intt_db():
-    print("Connecting to the database and creating tables")
-
-    Base.metadata.create_all(bind=engine)
-    print('Done! Tables created in the assistant database.')
-
-
-if __name__ == "__main__":
-    intt_db()
-</file>
-
-<file path="tests/test_memory_manual.py">
-import requests
-import time
-
-BASE_URL = "http://localhost:8000/chat"
-USER_ID = "benchmark_user"
-
-facts = [
-    "Меня зовут Андрей",
-    "Я живу в Германии",
-    "Мой любимый язык программирования — Python",
-    "Я работаю архитектором ПО",
-    "Я люблю готовить пасту",
-    "У меня есть собака по кличке Рекс",
-    "Я изучаю немецкий язык",
-    "Моё хобби — велоспорт",
-    "Я предпочитаю чай кофе",
-    "Мой любимый фильм — Матрица"
-]
-
-print("=== Заполняем память 10 фактами ===")
-for i, fact in enumerate(facts, 1):
-    resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": fact})
-    print(f"{i}. Отправлено: '{fact}' | Статус: {resp.status_code}")
-    time.sleep(0.5)
-
-print("\n=== Запрашиваем всё, что ассистент знает ===")
-resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": "Расскажи, что ты обо мне знаешь"})
-print(f"Статус: {resp.status_code}")
-print(f"Ответ:\n{resp.json().get('response', '')}")
-</file>
-
-<file path="backend/app/ai/__init__.py">
-
 </file>
 
 <file path="backend/app/ai/models.py">
@@ -660,6 +698,59 @@ export default reportWebVitals;
 import '@testing-library/jest-dom';
 </file>
 
+<file path="git">
+
+</file>
+
+<file path="init_db.py">
+from backend.app.database.models import Base
+
+from backend.app.database.connection import engine
+
+
+def intt_db():
+    print("Connecting to the database and creating tables")
+
+    Base.metadata.create_all(bind=engine)
+    print('Done! Tables created in the assistant database.')
+
+
+if __name__ == "__main__":
+    intt_db()
+</file>
+
+<file path="tests/test_memory_manual.py">
+import requests
+import time
+
+BASE_URL = "http://localhost:8000/chat"
+USER_ID = "benchmark_user"
+
+facts = [
+    "Меня зовут Андрей",
+    "Я живу в Германии",
+    "Мой любимый язык программирования — Python",
+    "Я работаю архитектором ПО",
+    "Я люблю готовить пасту",
+    "У меня есть собака по кличке Рекс",
+    "Я изучаю немецкий язык",
+    "Моё хобби — велоспорт",
+    "Я предпочитаю чай кофе",
+    "Мой любимый фильм — Матрица"
+]
+
+print("=== Заполняем память 10 фактами ===")
+for i, fact in enumerate(facts, 1):
+    resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": fact})
+    print(f"{i}. Отправлено: '{fact}' | Статус: {resp.status_code}")
+    time.sleep(0.5)
+
+print("\n=== Запрашиваем всё, что ассистент знает ===")
+resp = requests.post(BASE_URL, json={"user_id": USER_ID, "message": "Расскажи, что ты обо мне знаешь"})
+print(f"Статус: {resp.status_code}")
+print(f"Ответ:\n{resp.json().get('response', '')}")
+</file>
+
 <file path="frontend/.gitignore">
 # Виртуальное окружение и Python-кэш
 venv/
@@ -951,224 +1042,6 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 </file>
 
-<file path=".gitignore">
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Virtual env
-venv/
-.venv/
-env/
-
-# Database
-*.db
-*.sqlite3
-
-# Environment
-.env
-
-# Node
-node_modules/
-
-# VSCode
-.vscode/
-
-# Logs
-*.log
-
-# Chroma vector store
-chroma_db/
-
-# Documentation builds
-docs/
-
-# Specific junk files
-26.1.1
-</file>
-
-<file path="backend/app/ai/prompts.py">
-SYSTEM_PROMPT = (
-    "Ты — AI-ассистент по бэкенд-разработке и Python, персонализированный помощник. "
-    "У тебя есть доступ к сохранённым фактам о пользователе (user_facts). "
-    "Используй эти факты для адаптации ответов: обращайся по имени, учитывай цели, "
-    "интересы и предпочтения пользователя, когда это уместно.\n"
-    "Отвечай кратко, по существу, без примеров кода, если тебя не просят. "
-    "Не давай длинных обучающих материалов.\n"
-    "Если пользователь делится новым фактом о себе — кратко подтверди, что запомнил, "
-    "и в дальнейшем используй его для персонализации. "
-    "Когда пользователь спрашивает «Что ты обо мне знаешь?» или задаёт похожий вопрос, "
-    "чётко перечисли все известные тебе факты из памяти."
-)
-</file>
-
-<file path="backend/app/core/config.py">
-# Она нужна, чтобы загрузить переменные из файла .env в системные переменные окружения.
-from dotenv import load_dotenv
-
-import os
-
-
-# Вызываем load_dotenv() — она ищет файл .env в корне проекта,
-# читает его и делает все переменные оттуда доступными через os.getenv().
-load_dotenv()
-
-API_KEY = os.getenv('OPENROUTER_API')
-
-MODEL = os.getenv("MODEL")
-</file>
-
-<file path="backend/app/database/models.py">
-import enum
-
-from datetime import datetime
-
-from sqlalchemy import Text , DateTime , Enum , func , Index
-
-from sqlalchemy.orm import DeclarativeBase , Mapped  , mapped_column
-
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class MessageRole(str, enum.Enum):
-    USER = 'user'
-    ASSISTANT = 'assistant'
-    SYSTEM = 'system'
-
-
-class Message(Base):
-    __tablename__ = 'messages'
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    role: Mapped[MessageRole] = mapped_column(
-        Enum(MessageRole , name='message_role_enum' , create_type=True),
-        nullable=False
-    )
-    content: Mapped[str] = mapped_column(Text , nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-
-    __table_args__ = (
-        Index('ix_messages_created_at' ,"created_at" ),
-    )
-</file>
-
-<file path="backend/app/services/cli.py">
-import sys 
-
-import os 
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-
-
-
-from backend.app.database.connection import SessionLocal , engine
-
-from backend.app.database.models import Base , Message
-
-from backend.app.services.assistant_service import chat
-
-from backend.app.core.logger import logger
-
-def main():
-    logger.info("Запуск CLI-assistant")
-
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        while True:
-            user_input = input('You:')
-            if user_input == 'exit':
-                break
-            logger.debug('Получен ввод от пользователя ')
-            answer = chat(user_input, db)
-            print(f'AI: {answer}')
-    finally:
-        db.commit()
-        db.close()
-        logger.info("Ceccя BD Успешно закрыта , выход из CLI")
-
-if __name__ =="__main__":
-    main()
-</file>
-
-<file path="backend/app/services/main.py">
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from backend.app.database.models import Base
-from backend.app.database.connection import engine
-from backend.app.database import models
-from backend.app.services.assistant_service import chat as assistant_chat
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from backend.app.database.connection import get_db
-
-
-app = FastAPI()
-
-
-Base.metadata.create_all(bind=engine)
-
-
-origins = [
-    "http://localhost:3000"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/")
-def root():
-    return {"status": "ok"}
-
-
-@app.get('/health')
-def health():
-    return {'server': 'running'}
-
-
-
-@app.post("/chat")
-def chat(data: dict, db: Session = Depends(get_db)):
-    msg = data.get('message')
-
-    # --- Обработка специальной команды /test ---
-    if msg == '/test':
-        
-        return {
-            "response": "Команда /test временно недоступна. Новая память на базе Mem0 активна!",
-            "original": msg
-        }
-        
-
-    # --- Стандартная проверка сообщения ---
-    if msg is None or msg.strip() == "":
-        return {"error": "Сообщение не может быть пустым или состоять из одних пробелов"}
-    if len(msg) > 2000:   # лимит увеличен до 2000 символов
-        return {'error': 'Сообщение слишком длинное (максимум 2000 символов)'}
-
-    # --- Отправляем сообщение ассистенту ---
-    response = assistant_chat(msg, db)
-    return {
-        "response": response,
-        "original": msg
-    }
-</file>
-
 <file path="frontend/src/App.js">
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
@@ -1357,6 +1230,209 @@ jobs:
           python tests/benchmark_rag.py
 </file>
 
+<file path=".gitignore">
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# Node
+node_modules/
+
+# VSCode
+.vscode/
+
+# Logs
+*.log
+
+# Chroma vector store
+chroma_db/
+
+# Documentation builds
+docs/
+
+# Specific junk files
+26.1.1
+</file>
+
+<file path="backend/app/core/config.py">
+# Она нужна, чтобы загрузить переменные из файла .env в системные переменные окружения.
+from dotenv import load_dotenv
+
+import os
+
+
+# Вызываем load_dotenv() — она ищет файл .env в корне проекта,
+# читает его и делает все переменные оттуда доступными через os.getenv().
+load_dotenv()
+
+
+
+MODEL = os.getenv("MODEL")
+</file>
+
+<file path="backend/app/database/models.py">
+import enum
+
+from datetime import datetime
+
+from sqlalchemy import Text , DateTime , Enum , func , Index
+
+from sqlalchemy.orm import DeclarativeBase , Mapped  , mapped_column
+
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class MessageRole(str, enum.Enum):
+    USER = 'user'
+    ASSISTANT = 'assistant'
+    SYSTEM = 'system'
+
+
+class Message(Base):
+    __tablename__ = 'messages'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    role: Mapped[MessageRole] = mapped_column(
+        Enum(MessageRole , name='message_role_enum' , create_type=True),
+        nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text , nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    __table_args__ = (
+        Index('ix_messages_created_at' ,"created_at" ),
+    )
+</file>
+
+<file path="backend/app/services/cli.py">
+import sys 
+
+import os 
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+
+
+from backend.app.database.connection import SessionLocal , engine
+
+from backend.app.database.models import Base , Message
+
+from backend.app.services.assistant_service import chat
+
+from backend.app.core.logger import logger
+
+def main():
+    logger.info("Запуск CLI-assistant")
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        while True:
+            user_input = input('You:')
+            if user_input == 'exit':
+                break
+            logger.debug('Получен ввод от пользователя ')
+            answer = chat(user_input, db)
+            print(f'AI: {answer}')
+    finally:
+        db.commit()
+        db.close()
+        logger.info("Ceccя BD Успешно закрыта , выход из CLI")
+
+if __name__ =="__main__":
+    main()
+</file>
+
+<file path="backend/app/services/main.py">
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from backend.app.database.models import Base
+from backend.app.database.connection import engine
+from backend.app.database import models
+from backend.app.services.assistant_service import chat as assistant_chat
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from backend.app.database.connection import get_db
+
+
+app = FastAPI()
+
+
+Base.metadata.create_all(bind=engine)
+
+
+origins = [
+    "http://localhost:3000"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+
+@app.get('/health')
+def health():
+    return {'server': 'running'}
+
+
+
+@app.post("/chat")
+def chat(data: dict, db: Session = Depends(get_db)):
+    msg = data.get('message')
+
+    # --- Обработка специальной команды /test ---
+    if msg == '/test':
+        
+        return {
+            "response": "Команда /test временно недоступна. Новая память на базе Mem0 активна!",
+            "original": msg
+        }
+        
+
+    # --- Стандартная проверка сообщения ---
+    if msg is None or msg.strip() == "":
+        return {"error": "Сообщение не может быть пустым или состоять из одних пробелов"}
+    if len(msg) > 2000:   # лимит увеличен до 2000 символов
+        return {'error': 'Сообщение слишком длинное (максимум 2000 символов)'}
+
+    # --- Отправляем сообщение ассистенту ---
+    response = assistant_chat(msg, db)
+    return {
+        "response": response,
+        "original": msg
+    }
+</file>
+
 <file path="backend/app/database/repository.py">
 from typing import Sequence
 from sqlalchemy import select
@@ -1379,45 +1455,26 @@ def get_last_messages(db: Session, limit: int =10) -> list[Message]:
 </file>
 
 <file path="backend/app/ai/context_builder.py">
-from backend.app.ai.prompts import SYSTEM_PROMPT
+from backend.app.ai.persona_manager import PersonaManager
 
-def build_context(history, user_input,summary: str = None , user_facts:list =None):
+def build_context(history: list,
+                  user_input: str,
+                  summary: str | None = None,
+                  user_facts: str | None = None,
+                  user_id: str = 'default_user'):
+    
+    
+    persona = PersonaManager.get_persona_for_user(user_id)
+    system_prompt = persona["system_prompt"]
 
-    """
-    Builds the full context for sending to the LLM
-    Acceptc:
-            history - list of dicts with keys 'role' and 'content' (from DB or other source)
+    message = [{"role": "system", "content": system_prompt}]
 
-            user_input - string with  the user's new message 
-
-            message = list of dicts ready to be passed to genetate_response()
-
-                    """
-    # statr with the System message - Instruction for the model
-     #Если есть факты о пользователе, добавляем их как системную информацию
-    message = [
-        {
-            'role': 'system',
-            'content': SYSTEM_PROMPT or 'You are assistant'
-        }
-    ]
     if user_facts:
-        facts_text = ' Факты о пользователе: \n' + '\n'.join(
-    [f'- {str(f.key)}: {str(f.value)}' for f in user_facts]
-)
-        message.append({
-            'role': 'system',
-            'content': facts_text
-        })
+        message.append({"role": "system", "content": f"Факты о пользователе:\n{user_facts}"})
+
     if summary:
-        message.append({
-            'role': 'system',
-            'content': f"Контекст предыдущего диалога (НЕ обсуждай его, если не спросят, просто используй для понимания):\n{str(summary)}"})
+        message.append({"role": "system", "content": f"Контекст предыдущего диалога:\n{summary}"})
 
-
-    # Clean the history 
-    #Keep only messages that have both 'role' and 'content ' (Not None and not empty)
-    # Rebuild each  element  as a new dict (just in case , to avoid mutating the original objects)
     clean_history = []
     for m in history:
         if hasattr(m, 'role'):
@@ -1427,17 +1484,10 @@ def build_context(history, user_input,summary: str = None , user_facts:list =Non
             role = m['role']
             content = m['content']
         clean_history.append({'role': role, 'content': str(content)})
-    
-
-    # add the cleaned history to out final list 
+        
     message.extend(clean_history)
+    message.append({"role": "user", "content": str(user_input)})
 
-    # Finally , add the current user query
-    message.append({
-    'role': 'user',
-    'content': str(user_input)
-})
-    # return the full context
     return message
 </file>
 
@@ -1500,7 +1550,7 @@ def generate_response(message: list[dict]) -> str:
 dotenv
 openai
 fastapi
-python-dotenv
+
 sqlalchemy
 httpx
 requests
@@ -1513,10 +1563,6 @@ sentence-transformers>=2.2.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 mem0ai
-langchain
-langchain-community
-pgvector
-psycopg2-binary
 </file>
 
 <file path="backend/app/services/assistant_service.py">
@@ -1526,13 +1572,29 @@ from backend.app.database.repository import save_message, get_last_messages
 from backend.app.ai.memory_orchestrator import memory_orchestrator
 from backend.app.ai.context_builder import build_context
 from backend.app.ai.provider import generate_response
-
+from backend.app.ai.persona_manager import PersonaManager
 
 def chat(user_input: str, db: Session, user_id: str = 'default_user') -> str:
     """
     Главная функция общения с ассистентом.
     Соединяет реляционную базу сообщений, память Mem0 и модель Ollama.
     """
+    user_input = user_input.strip()
+
+    # Обработка команды /role
+    if user_input.startswith("/role"):
+        parts = user_input.split(" ", 1)
+        if len(parts) < 2 or not PersonaManager.validate_role(parts[1]):
+            roles = "\n".join([f"- {r['id']} ({r['display_name']})" for r in PersonaManager.get_available_roles()])
+            return f"Неверная роль. Доступные роли:\n{roles}"
+        new_role = parts[1]
+        memory_orchestrator.add_user_memory(user_id, text=f"assistant_role: {new_role}")
+        return f"Роль успешно сменена на: {new_role}"
+
+    # Обработка команды /help
+    if user_input.startswith("/help"):
+        return "Доступные команды:\n/role <название> - сменить роль\n/help - список команд"
+
 
     save_message(db, role='user', content=user_input)
 
@@ -1541,7 +1603,12 @@ def chat(user_input: str, db: Session, user_id: str = 'default_user') -> str:
     relevant_facts_string = memory_orchestrator.search_relevant_facts(user_id, query=user_input)
 
 
-    context_messages = build_context(history, user_input , user_facts=relevant_facts_string)
+    context_messages = build_context(
+        history, 
+        user_input, 
+        user_facts=relevant_facts_string, 
+        user_id=user_id  
+    )
 
     answer = generate_response(context_messages)
 

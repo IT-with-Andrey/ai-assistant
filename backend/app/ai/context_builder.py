@@ -1,42 +1,26 @@
+from backend.app.ai.persona_manager import PersonaManager
+
+from backend.app.ai.memory_orchestrator import memory_orchestrator
 
 
-from backend.app.ai.prompts import SYSTEM_PROMPT
+def build_context(history , user_input , summary: str=None , user_facts: str = None , user_id: str = 'default_user'):
+    facts = memory_orchestrator.get_user_fact(user_id)
+    role = 'default'
+    for fact in facts:
+        if isinstance(fact,str) and fact.startswith('assistant_role:'):
+            role = fact.split(':',1)[1].strip()
+            break
 
+    system_prompt = PersonaManager.get_system_prompt(role)
 
-def build_context(history, user_input, summary: str = None, user_facts: list = None):
-    """
-    Builds the full context for sending to the LLM
-    Acceptc:
-            history - list of dicts with keys 'role' and 'content' (from DB or other source)
+    message = [{"role": "system", "content": system_prompt}]
 
-            user_input - string with  the user's new message 
-
-            message = list of dicts ready to be passed to genetate_response()
-
-                    """
-    # statr with the System message - Instruction for the model
-    # Если есть факты о пользователе, добавляем их как системную информацию
-    message = [
-        {
-            'role': 'system',
-            'content': SYSTEM_PROMPT or 'You are assistant'
-        }
-    ]
     if user_facts:
-        # user_facts теперь строка (результат memory_orchestrator.search_relevant_facts)
-        facts_text = 'Факты о пользователе:\n' + str(user_facts)
-        message.append({
-            'role': 'system',
-            'content': facts_text
-        })
-    if summary:
-        message.append({
-            'role': 'system',
-            'content': f"Контекст предыдущего диалога (НЕ обсуждай его, если не спросят, просто используй для понимания):\n{str(summary)}"})
+        message.append({"role": "system", "content": f"Факты о пользователе:\n{user_facts}"})
 
-    # Clean the history
-    # Keep only messages that have both 'role' and 'content ' (Not None and not empty)
-    # Rebuild each  element  as a new dict (just in case , to avoid mutating the original objects)
+    if summary:
+        message.append({"role": "system", "content": f"Контекст предыдущего диалога:\n{summary}"})
+
     clean_history = []
     for m in history:
         if hasattr(m, 'role'):
@@ -47,13 +31,6 @@ def build_context(history, user_input, summary: str = None, user_facts: list = N
             content = m['content']
         clean_history.append({'role': role, 'content': str(content)})
 
-    # add the cleaned history to out final list
     message.extend(clean_history)
-
-    # Finally , add the current user query
-    message.append({
-        'role': 'user',
-        'content': str(user_input)
-    })
-    # return the full context
+    message.append({"role": "user", "content": str(user_input)})
     return message

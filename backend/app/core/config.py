@@ -1,16 +1,18 @@
+from pydantic_settings import BaseSettings
 
-# Она нужна, чтобы загрузить переменные из файла .env в системные переменные окружения.
-from dotenv import load_dotenv
+class Settings(BaseSettings):
+    """Application-wide settings loaded from .env and environment."""
+    AI_MODEL: str = "gemma4:31b-cloud"
+    OLLAMA_HOST: str = "http://localhost:11434"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_assistant_db"
+    OPENROUTER_API: str = ""
+    OLLAMA_API_KEY: str = ""
+    DEFAULT_USER_ID: str = "default_user"
 
-import os
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+    }
 
-
-# Вызываем load_dotenv() — она ищет файл .env в корне проекта,
-# читает его и делает все переменные оттуда доступными через os.getenv().
-load_dotenv()
-
-
-
-MODEL = os.getenv("MODEL")
-
-
+# Singleton instance to be imported throughout the project.
+settings = Settings()
