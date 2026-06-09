@@ -1,26 +1,15 @@
 
-import os 
+from sqlalchemy.ext.asyncio import create_async_engine ,  AsyncSession , async_sessionmaker
 
-from sqlalchemy import create_engine
+from backend.app.core.config import settings
 
-from sqlalchemy.orm  import sessionmaker
+DATABASE_URL  = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
-DATABASE_URL = "postgresql://postgres:89614756698q@localhost:5432/assistant"
+engine = create_async_engine(DATABASE_URL, echo=False, future=True) 
 
-engine = create_engine(DATABASE_URL)
-
-
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+AsyncSessionLocal = async_sessionmaker(engine , class_=AsyncSession, expire_on_commit=False)
 
 
-def get_db():
-    """Автоматический раздатчик сессий для наших будущих API-эндпоинтов. """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session 

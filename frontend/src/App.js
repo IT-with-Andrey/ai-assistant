@@ -28,22 +28,65 @@ function App() {
     setInputValue('');
     setIsLoading(true);
 
+    // Добавляем пустое сообщение ассистента, которое будем заполнять
+    addMessage('', 'assistant');
+
     try {
-      const response = await fetch('http://localhost:8000/chat', {
+      const response = await fetch('http://localhost:8000/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage }),
+        body: JSON.stringify({ message: userMessage, user_id: 'default_user' }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Ошибка сервера: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
 
-      const data = await response.json();
-      addMessage(data.response, 'assistant');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantText = '';
+      let shouldStop = false; // Флаг для выхода из WHILE
+
+      while (!shouldStop) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const token = line.slice(6);
+            
+            if (token.startsWith('[ERROR]')) {
+              assistantText += '\n[Ошибка: ' + token.replace('[ERROR]', '').trim() + ']';
+              shouldStop = true; // Сигнализируем о выходе из while
+              await reader.cancel(); // Явно говорим браузеру закрыть поток
+              break; // Выходим из for
+            }
+            
+            assistantText += token;
+            
+            // Обновляем именно сообщение ассистента
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (lastIdx >= 0 && updated[lastIdx].sender === 'assistant') {
+                updated[lastIdx] = { text: assistantText, sender: 'assistant' };
+              }
+              return updated;
+            });
+          }
+        }
+      }
     } catch (error) {
-      console.error('Ошибка при отправке сообщения:', error);
-      addMessage('Извините, произошла ошибка при обращении к серверу.', 'assistant');
+      console.error('Ошибка при стриме:', error);
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].sender === 'assistant') {
+          updated[lastIdx] = { text: 'Извините, ошибка соединения.', sender: 'assistant' };
+        }
+        return updated;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -54,8 +97,25 @@ function App() {
     sendMessage(inputValue);
   };
 
-  const handleTestFacts = () => {
-    sendMessage('/test');
+  const handleTestFacts = async () => {
+    if (isLoading) return;
+    const userMessage = '/test';
+    addMessage(userMessage, 'user');
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage }),
+      });
+      if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+      const data = await response.json();
+      addMessage(data.response, 'assistant');
+    } catch (error) {
+      addMessage('Ошибка загрузки тестовых фактов.', 'assistant');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

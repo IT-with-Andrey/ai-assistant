@@ -1,0 +1,67 @@
+
+# Правильные пути
+from backend.app.middlewares.orchestrator import ChatOrchestrator
+from backend.app.ai.provider_router import ProviderRouter
+from backend.app.ai.providers.gemini_provider import GeminiProvider
+from backend.app.ai.providers.ollama_provider import OllamaProvider
+from backend.app.ai.memory_orchestrator import MemoryOrchestrator
+from backend.app.ai.memory.mem0_storage import Mem0StorageProvider
+from backend.app.ai.memory.pruner import ByteSizeHistoryPruner
+from backend.app.ai.memory.optimizer import MockMemoryOptimizer
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.app.middlewares.command_handler import CommandHandlerMiddleware
+from backend.app.middlewares.save_user_message import SaveUserMessageMiddleware
+from backend.app.middlewares.save_assistant_message import SaveAssistantMessageMiddleware
+from backend.app.middlewares.load_history import LoadHistoryMiddleware
+from backend.app.middlewares.search_memory import SearchMemoryMiddleware
+from backend.app.middlewares.context_assembly import ContextAssemblyMiddleware
+from backend.app.middlewares.call_llm import CallLLMMiddleware
+from backend.app.middlewares.update_memory import UpdateMemoryMiddleware
+from backend.app.middlewares.streaming_call_llm import StreamingCallLLMMiddleware
+
+class AppContainer:
+    def __init__(self):
+        # Память
+        self.memory_storage = Mem0StorageProvider()
+        self.history_pruner = ByteSizeHistoryPruner()
+        self.memory_optimizer = MockMemoryOptimizer()
+        self.memory_orchestrator = MemoryOrchestrator(
+            vector_memory=self.memory_storage,
+            pruner=self.history_pruner,
+            optimizer=self.memory_optimizer
+        )
+        # Провайдеры (только Gemini, Ollama отключена, т.к. модель сломана)
+        self.gemini_provider = GeminiProvider()
+        # Если Ollama починишь, можно добавить: OllamaProvider()
+        self.llm_router = ProviderRouter(providers=[self.gemini_provider])
+    
+
+app_container = AppContainer()
+
+
+
+def create_chat_orchestrator(db: AsyncSession, background_tasks=None) -> ChatOrchestrator:
+    middlewares = [
+        CommandHandlerMiddleware(app_container.memory_orchestrator),
+        SaveUserMessageMiddleware(db),          
+        LoadHistoryMiddleware(db),              
+        SearchMemoryMiddleware(app_container.memory_orchestrator),
+        ContextAssemblyMiddleware(),
+        CallLLMMiddleware(app_container.llm_router),
+        SaveAssistantMessageMiddleware(db),     
+        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+    ]
+    return ChatOrchestrator(middlewares)
+
+
+def create_streaming_orchestrator(db: AsyncSession, background_tasks=None) -> ChatOrchestrator:
+    middlewares = [
+        CommandHandlerMiddleware(app_container.memory_orchestrator),
+        SaveUserMessageMiddleware(db),
+        LoadHistoryMiddleware(db),
+        SearchMemoryMiddleware(app_container.memory_orchestrator),
+        ContextAssemblyMiddleware(),
+        StreamingCallLLMMiddleware(app_container.llm_router),
+        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+    ]
+    return ChatOrchestrator(middlewares)

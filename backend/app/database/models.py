@@ -3,7 +3,7 @@ import enum
 
 from datetime import datetime
 
-from sqlalchemy import Text , DateTime , Enum , func , Index
+from sqlalchemy import Text , DateTime , Enum , func , Index , String
 
 from sqlalchemy.orm import DeclarativeBase , Mapped  , mapped_column
 
@@ -28,6 +28,7 @@ class Message(Base):
         nullable=False
     )
     content: Mapped[str] = mapped_column(Text , nullable=False)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, default="default_user")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
