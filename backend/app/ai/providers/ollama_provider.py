@@ -65,37 +65,41 @@ class OllamaProvider(BaseLLMProvider):
 
     async def generate_stream(self, messages: List[Dict[str, str]], **kwargs) -> AsyncGenerator[str, None]:
         logger.debug("Стриминг-запрос к Ollama: %d сообщений", len(messages))
-        try:
-            safe_messages = []
-            for msg in messages:
-                safe_msg = {
-                    'role': str(msg.get('role', 'user')),
-                    'content': str(msg.get('content', ''))
-                }
-                safe_messages.append(safe_msg)
-            model = self.model_name
-            async with httpx.AsyncClient(timeout=120) as client:
-                async with client.stream(
-                    'POST',
-                    f"{self.host}/api/chat",
-                    json={
-                        "model": model,
-                        "messages": safe_messages,
-                        "stream": True,
-                        "options": {'num_predict': 4096}
+
+        async def _stream_tokens():
+            try:
+                safe_messages = []
+                for msg in messages:
+                    safe_msg = {
+                        'role': str(msg.get('role', 'user')),
+                        'content': str(msg.get('content', ''))
                     }
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        try:
-                            data = json.loads(line)
-                            token = data.get('message', {}).get('content', '')
-                            if token:
-                                yield token
-                        except json.JSONDecodeError:
-                            logger.warning("Некорректная строка в стриме: %s", line)
-        except Exception as e:
-            logger.error(f"Ошибка стрима Ollama: {e}")
-            raise ProviderError(f"Ollama стрим недоступен: {e}")
+                    safe_messages.append(safe_msg)
+                model = self.model_name
+                async with httpx.AsyncClient(timeout=120) as client:
+                    async with client.stream(
+                        'POST',
+                        f"{self.host}/api/chat",
+                        json={
+                            "model": model,
+                            "messages": safe_messages,
+                            "stream": True,
+                            "options": {'num_predict': 4096}
+                        }
+                    ) as response:
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if not line.strip():
+                                continue
+                            try:
+                                data = json.loads(line)
+                                token = data.get('message', {}).get('content', '')
+                                if token:
+                                    yield token
+                            except json.JSONDecodeError:
+                                logger.warning("Некорректная строка в стриме: %s", line)
+            except Exception as e:
+                logger.error(f"Ошибка стрима Ollama: {e}")
+                raise ProviderError(f"Ollama стрим недоступен: {e}")
+
+        return _stream_tokens()

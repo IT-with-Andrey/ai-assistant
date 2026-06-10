@@ -10,7 +10,7 @@ repomix
 
 pip install -r requirements.txt
 
-python backend/app/services/cli.py
+python -m backend.app.services.cli
 
 
 
@@ -20,13 +20,15 @@ python backend/app/services/cli.py
 
 
 
-
+for /d /r . %d in (__pycache__) do @if exist "%d" rd /s /q "%d"
 
 
 
 Proxom
 
 sensors
+
+shutdown -h now
 
 watch -n 1 sensors
 

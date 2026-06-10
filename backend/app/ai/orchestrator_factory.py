@@ -19,6 +19,7 @@ from backend.app.middlewares.call_llm import CallLLMMiddleware
 from backend.app.middlewares.update_memory import UpdateMemoryMiddleware
 from backend.app.middlewares.streaming_call_llm import StreamingCallLLMMiddleware
 
+
 class AppContainer:
     def __init__(self):
         # Память
@@ -32,24 +33,25 @@ class AppContainer:
         )
         # Провайдеры (только Gemini, Ollama отключена, т.к. модель сломана)
         self.gemini_provider = GeminiProvider()
-        # Если Ollama починишь, можно добавить: OllamaProvider()
-        self.llm_router = ProviderRouter(providers=[self.gemini_provider])
-    
+        self.ollama_provider = OllamaProvider(model_name="gemma4:31b-cloud")
+        self.llm_router = ProviderRouter(
+            providers=[self.ollama_provider, self.gemini_provider])
+
 
 app_container = AppContainer()
-
 
 
 def create_chat_orchestrator(db: AsyncSession, background_tasks=None) -> ChatOrchestrator:
     middlewares = [
         CommandHandlerMiddleware(app_container.memory_orchestrator),
-        SaveUserMessageMiddleware(db),          
-        LoadHistoryMiddleware(db),              
+        SaveUserMessageMiddleware(db),
+        LoadHistoryMiddleware(db),
         SearchMemoryMiddleware(app_container.memory_orchestrator),
         ContextAssemblyMiddleware(),
         CallLLMMiddleware(app_container.llm_router),
-        SaveAssistantMessageMiddleware(db),     
-        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+        SaveAssistantMessageMiddleware(db),
+        UpdateMemoryMiddleware(
+            app_container.memory_orchestrator, background_tasks=background_tasks)
     ]
     return ChatOrchestrator(middlewares)
 
@@ -62,6 +64,7 @@ def create_streaming_orchestrator(db: AsyncSession, background_tasks=None) -> Ch
         SearchMemoryMiddleware(app_container.memory_orchestrator),
         ContextAssemblyMiddleware(),
         StreamingCallLLMMiddleware(app_container.llm_router),
-        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+        UpdateMemoryMiddleware(
+            app_container.memory_orchestrator, background_tasks=background_tasks)
     ]
     return ChatOrchestrator(middlewares)

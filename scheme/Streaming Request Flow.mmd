@@ -1,0 +1,57 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontSize': '22px',
+    'lineColor': '#000000',
+    'primaryColor': '#000000',
+    'primaryTextColor': '#000000',
+    'primaryBorderColor': '#000000',
+    'tertiaryColor': '#eeeeee',
+    'tertiaryTextColor': '#000000',
+    'tertiaryBorderColor': '#000000',
+    'edgeLabelBackground': '#ffffff',
+    'fontFamily': 'Arial'
+  },
+  'themeCSS': [
+    '.edgeLabel { font-size: 22px !important; }',
+    '.edgePath .path { stroke: #000000 !important; stroke-width: 3px !important; }',
+    '.marker { fill: #000000 !important; stroke: #000000 !important; }',
+    '.node rect, .node circle, .node polygon { stroke-width: 3px; stroke: #000000; }'
+  ].join('\n')
+}}%%
+flowchart TB
+    U[Пользователь]
+    F[React Frontend]
+    API[FastAPI /chat/stream]
+    MW[Middleware Pipeline]
+    Repo[(MessageRepository)]
+    Mem[(MemoryOrchestrator)]
+    PR[ProviderRouter]
+    LLM[Gemini/Ollama]
+
+    U -->|Ввод сообщения| F
+    F -->|POST /chat/stream| API
+    API -->|Запуск конвейера| MW
+    
+    MW -->|Проверка команд| MW
+    MW -->|Сохранить сообщение| Repo
+    Repo -->|ok| MW
+    MW -->|Загрузить историю| Repo
+    Repo -->|history| MW
+    MW -->|Поиск фактов| Mem
+    Mem -->|user facts| MW
+    MW -->|Сборка контекста| MW
+    MW -->|Запрос стрима| PR
+    PR -->|generate_stream| LLM
+    LLM -->|токены| PR
+    PR -->|async generator| MW
+    MW -->|ctx.response_stream| API
+    API -->|StreamingResponse| F
+    F -->|Вывод ответа| U
+
+    API -->|Фоновое сохранение| MW
+    MW -->|add_user_memory| Mem
+    Mem -->|done| MW
+    MW -->|Сохранить ответ| Repo
+    Repo -->|ok| MW
+    MW -->|Завершение задачи| API

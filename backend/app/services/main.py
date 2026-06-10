@@ -11,6 +11,15 @@ from backend.app.middlewares.base import ChatContext
 from backend.app.ai.orchestrator_factory import create_chat_orchestrator
 from backend.app.core.logger import logger
 from backend.app.ai.orchestrator_factory import create_streaming_orchestrator
+import uuid
+from backend.app.ai.personas import PERSONAS
+from backend.app.database.repository import MessageRepository
+from backend.app.ai.orchestrator_factory import app_container
+
+class InitChatRequest(BaseModel):
+    session_id: str 
+    persona_id: str = 'default'
+    
 
 
 app = FastAPI(title="AI Assistant Persona API")
@@ -33,6 +42,7 @@ def health():
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
+    persona_id: str | None=None
 
 @app.post("/chat/stream")
 async def chat_stream(
@@ -45,7 +55,7 @@ async def chat_stream(
     
     # Собираем оркестратор через единую фабрику
     orchestrator = create_streaming_orchestrator(db)
-    ctx = ChatContext(user_input=request.message, user_id=request.user_id)
+    ctx = ChatContext(user_input=request.message, user_id=request.user_id, persona_id=request.persona_id or None)
     
     try:
         ctx = await orchestrator.run(ctx)
@@ -86,7 +96,7 @@ async def chat_regular(
 ):
     """Обычный синхронный эндпоинт (для тестов/интеграций) через ту же фабрику."""
     orchestrator = create_chat_orchestrator(db, background_tasks=background_tasks)
-    ctx = ChatContext(user_input=request.message, user_id=request.user_id)
+    ctx = ChatContext(user_input=request.message, user_id=request.user_id, persona_id=request.persona_id)
     
     try:
         ctx = await orchestrator.run(ctx)
@@ -96,3 +106,34 @@ async def chat_regular(
         await db.rollback()
         logger.error(f"Ошибка в синхронном чате: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+@app.post("/chats/init")
+async def init_chat(request: InitChatRequest, db: AsyncSession=Depends(get_db)):
+    if request.persona_id not in PERSONAS:
+        request.persona_id = "default"
+
+    persona = PERSONAS[request.persona_id]
+    chat_id = str(uuid.uuid4())
+    welcome = persona['welcome_message']
+
+    try:
+        repo = MessageRepository(db)
+        await repo.save(role="assistant",content=welcome, user_id=request.session_id)
+        await db.commit()
+    except Exception as e: 
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f'Ошибка инициализации чата {e}')
+    await app_container.memory_orchestrator.add_user_memory(
+        request.session_id, 
+        text=f"assistant_role: {request.persona_id}",
+        persona_id=None  # глобальный факт, чтобы не зависеть от роли
+)
+    return{
+        "status": "success",
+        "chat_id": chat_id,
+        "persona_id": request.persona_id,
+        "display_name": persona["display_name"],
+        "welcome_message": welcome
+    }

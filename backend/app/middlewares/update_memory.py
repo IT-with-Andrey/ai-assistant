@@ -18,10 +18,10 @@ class UpdateMemoryMiddleware(BaseMiddleware):
             
         return ctx
 
-    async def _update_memory(self, user_id, text):
+    async def _update_memory(self, user_id, text, persona_id = None):
         try:
-            await self.memory_orchestrator.add_user_memory(user_id, text=text)
-            logger.debug(f"UpdateMemoryMiddleware: факт сохранён из сообщения: {text[:100]}...")
-            logger.debug("UpdateMemoryMiddleware: задача поставлена в фоновые задачи")
+            await self.memory_orchestrator.add_user_memory(user_id, text=text , persona_id=persona_id)
+            logger.debug(f"UpdateMemoryMiddleware: факт сохранён (persona={persona_id}): {text[:100]}...")
+            
         except Exception as e:
             logger.error(f"Ошибка сохранения в память: {e}", exc_info=True)

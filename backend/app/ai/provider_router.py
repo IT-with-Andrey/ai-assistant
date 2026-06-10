@@ -32,44 +32,42 @@ class ProviderRouter(BaseLLMProvider):
         return "Извините, облачный ИИ-провайдер временно недоступен."
 
     async def generate_stream(self, messages: list, **kwargs) -> AsyncGenerator[str, None]:
-        logger.debug("ProviderRouter: инициализация стрима")
-        for provider in self.providers:
+        logger.debug("ProviderRouter: инициализация стрима с перебором провайдеров")
+        return self._smart_stream_generator(messages, list(self.providers), **kwargs)
+    
+
+    async def _smart_stream_generator(self, messages: list, providers: List[BaseLLMProvider], **kwargs):
+        """Генератор, который при ошибке переходит к следующему провайдеру."""
+        current_provider_index = 0
+        while current_provider_index < len(providers):
+            provider = providers[current_provider_index]
             if hasattr(provider, 'is_available') and not provider.is_available:
+                logger.debug(f"Провайдер {provider.__class__.__name__} недоступен, пропускаем")
+                current_provider_index += 1
                 continue
 
             try:
                 logger.debug(f"ProviderRouter: пробуем стрим через {provider.__class__.__name__}")
-                
                 raw_stream = await provider.generate_stream(messages, **kwargs)
-
-                # Безопасно получаем итератор стрима
                 iterator = raw_stream.__aiter__()
-                first_token = await iterator.__anext__()
-                logger.debug(f"ProviderRouter: первый токен получен от {provider.__class__.__name__}")
 
-                
-                return self._stream_wrapper(first_token, iterator, provider.__class__.__name__)
-
-            except ProviderError as e:
-                logger.warning(f"Провайдер {provider.__class__.__name__} не смог начать стрим: {e}")
+                # Читаем токены, пока не кончатся или не возникнет ошибка
+                while True:
+                    try:
+                        token = await iterator.__anext__()
+                        yield token
+                    except StopAsyncIteration:
+                        return  # Стрим завершился успешно
+                    except Exception as e:
+                        logger.warning(f"Стрим {provider.__class__.__name__} прервался: {e}")
+                        break  # Выходим из цикла чтения, чтобы переключить провайдера
             except Exception as e:
-                logger.error(f"Критическая ошибка стрима в {provider.__class__.__name__}: {e}", exc_info=True)
-                continue
+                logger.error(f"ProviderRouter: ошибка в стриме {provider.__class__.__name__}: {e}", exc_info=True)
+                logger.warning(f"Провайдер {provider.__class__.__name__} не смог начать стрим: {e}")
 
-        return self._error_stream("Не удалось подключиться к модели генерации текста.")
+            # Переходим к следующему провайдеру
+            current_provider_index += 1
 
-    async def _stream_wrapper(self, first_token: str, iterator, provider_name: str) -> AsyncGenerator[str, None]:
-        """Вспомогательный генератор: отдаёт первый сохраненный токен, а затем все остальные."""
-        if first_token:
-            logger.debug(f"Отдаю первый токен: {first_token[:50]}...")
-            yield first_token
-        try:
-            async for token in iterator:
-                logger.debug(f"Отдаю токен: {token[:50]}...")
-                yield token
-        except Exception as e:
-            logger.error(f"Стрим провайдера {provider_name} прерван: {e}", exc_info=True)
-            yield f"\n\n[⚠️ Ошибка: {e}]"
-
-    async def _error_stream(self, error_msg: str) -> AsyncGenerator[str, None]:
-        yield f"Ошибка системы: {error_msg}"
+        # Все провайдеры отказали
+        logger.debug(f"ProviderRouter: начал стримить через {provider.__class__.__name__}")
+        yield "Извините, все языковые модели временно недоступны. Попробуйте позже."

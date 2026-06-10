@@ -6,6 +6,13 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [personaId, setPersonaId] = useState(null);   // выбранная роль
+  const [personas] = useState([                         // список ролей
+    { id: "default", name: "Универсальный помощник" },
+    { id: "python_teacher", name: "🐍 Python Наставник" },
+    { id: "fitness_trainer", name: "💪 Фитнес-тренер" },
+    { id: "english_teacher", name: "🇬🇧 Учитель Английского" },
+  ]);
   const chatEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -18,6 +25,24 @@ function App() {
 
   const addMessage = (text, sender) => {
     setMessages(prev => [...prev, { text, sender }]);
+  };
+
+  const selectPersona = async (id) => {
+    setPersonaId(id);
+    setIsLoading(true);
+    try {
+      const res = await fetch('http://localhost:8000/chats/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: 'guest', persona_id: id })
+      });
+      const data = await res.json();
+      addMessage(data.welcome_message, 'assistant');
+    } catch (e) {
+      addMessage('Ошибка при инициализации чата', 'assistant');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const sendMessage = async (messageText) => {
@@ -35,7 +60,7 @@ function App() {
       const response = await fetch('http://localhost:8000/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, user_id: 'default_user' }),
+        body: JSON.stringify({ message: userMessage, user_id: 'guest', persona_id: personaId }),
       });
 
       if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
@@ -97,46 +122,32 @@ function App() {
     sendMessage(inputValue);
   };
 
-  const handleTestFacts = async () => {
-    if (isLoading) return;
-    const userMessage = '/test';
-    addMessage(userMessage, 'user');
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:8000/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage }),
-      });
-      if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
-      const data = await response.json();
-      addMessage(data.response, 'assistant');
-    } catch (error) {
-      addMessage('Ошибка загрузки тестовых фактов.', 'assistant');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="chat-container">
       <header className="chat-header">
         <h1>Prototype</h1>
-        <button
-          className="test-facts-button"
-          onClick={handleTestFacts}
-          disabled={isLoading}
-        >
-          Загрузить тестовые факты
-        </button>
       </header>
 
       <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="empty-chat">
-            <p>Чем я могу помочь?</p>
+        {/* Кнопки выбора роли */}
+        {!personaId && (
+          <div className="persona-select">
+            <h2>Выбери роль</h2>
+            <div className="persona-buttons">
+              {personas.map(p => (
+                <button
+                  key={p.id}
+                  className="persona-button"
+                  onClick={() => selectPersona(p.id)}
+                  disabled={isLoading}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
+
         {messages.map((msg, index) => (
           <div
             key={index}
@@ -159,19 +170,22 @@ function App() {
         <div ref={chatEndRef} />
       </div>
 
-      <form className="chat-input-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Введите сообщение..."
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          disabled={isLoading}
-          autoFocus
-        />
-        <button type="submit" disabled={isLoading || !inputValue.trim()}>
-          Отправить
-        </button>
-      </form>
+      {/* Форма ввода (активна только после выбора роли) */}
+      {personaId && (
+        <form className="chat-input-form" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder="Введите сообщение..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            disabled={isLoading}
+            autoFocus
+          />
+          <button type="submit" disabled={isLoading || !inputValue.trim()}>
+            Отправить
+          </button>
+        </form>
+      )}
     </div>
   );
 }

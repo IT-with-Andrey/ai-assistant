@@ -11,12 +11,13 @@ class Settings(BaseSettings):
     OLLAMA_HOST: str = "http://localhost:11434"
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_assistant_db"
     OPENROUTER_API: str = ""
+    MEM0_LLM_PROVIDER: str = "ollama"          # ← обязательно
+    MEM0_LLM_API_BASE: str = "http://localhost:11434" 
     OLLAMA_API_KEY: str = ""
     DEFAULT_USER_ID: str = "default_user"
     GEMINI_API_KEY: str = ""   # <-- твой новый ключ
-    GROK_API_KEY: str = ""     # <-- заготовка на будущее
-    LLM_PROVIDER: str = "ollama"  # ollama / gemini / grok
-    MEM0_LLM_MODEL: str = "gemini-2.5-flash-lite"
+    GROK_API_KEY: str = ""  
+    MEM0_LLM_MODEL: str = "gemma4:31b-cloud"
     MEM0_LLM_FALLBACK_MODELS: list[str] = [
             "gemini-2.5-flash",
             "gemini-2.0-flash",
