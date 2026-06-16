@@ -63,15 +63,23 @@ async def chat_stream(
         raise HTTPException(status_code=500, detail="Внутренняя ошибка ИИ-конвейера")
 
     if not ctx.response_stream:
-        await db.commit()
-        raise HTTPException(status_code=500, detail="Провайдер не вернул стрим-данные")
+        if ctx.response:
+            # Ответ сгенерирован middleware (например, команда)
+            async def _command_stream():
+                yield ctx.response
+            ctx.response_stream = _command_stream()
+        else:
+            await db.commit()
+            raise HTTPException(status_code=500, detail="Провайдер не вернул стрим-данные")
 
     async def event_generator():
         success = True
         logger.debug("event_generator: начал передачу стрима")
         try:
             async for chunk in ctx.response_stream:
-                yield f"data: {chunk}\n\n"
+                
+                safe_chunk = chunk.replace('\n', '\\n')   # <-- экранируем переносы
+                yield f"data: {safe_chunk}\n\n"
         except Exception as e:
             success = False
             logger.error(f"Ошибка во время передачи стрима пользователю: {e}", exc_info=True)

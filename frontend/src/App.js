@@ -166,7 +166,7 @@ function App() {
               controller.abort();
               break;
             }
-            assistantText += token;
+            assistantText += token.replace(/\\n/g, '\n');
             setChats(prev => prev.map(c => {
               if (c.id !== activeChatId) return c;
               const updatedMessages = [...c.messages];
@@ -415,7 +415,7 @@ function App() {
                     )}
                   </div>
                 </form>
-              </div>
+              </div> 
             </>
           )}
         </div>
