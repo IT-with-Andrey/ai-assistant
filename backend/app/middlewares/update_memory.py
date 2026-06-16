@@ -10,18 +10,17 @@ class UpdateMemoryMiddleware(BaseMiddleware):
     async def process(self, ctx: ChatContext) -> ChatContext:
         if self.background_tasks:
             # Создаём асинхронную задачу и добавляем её к ожиданию завершения
-            task = asyncio.create_task(self._update_memory(ctx.user_id, ctx.user_input))
-            self.background_tasks.add_task(task)
+            self.background_tasks.add_task(self._update_memory, ctx.user_id, ctx.user_input, ctx.persona_id)
             logger.debug("UpdateMemoryMiddleware: задача поставлена в фоновые задачи")
         else:
-            await self._update_memory(ctx.user_id, ctx.user_input)
+            await self._update_memory(ctx.user_id, ctx.user_input, ctx.persona_id)
             
         return ctx
 
-    async def _update_memory(self, user_id, text, persona_id = None):
+    async def _update_memory(self, user_id, text, persona_id=None):
         try:
-            await self.memory_orchestrator.add_user_memory(user_id, text=text , persona_id=persona_id)
-            logger.debug(f"UpdateMemoryMiddleware: факт сохранён (persona={persona_id}): {text[:100]}...")
-            
+            await self.memory_orchestrator.add_user_memory(user_id, text=text, persona_id=persona_id)
+            logger.debug(f"UpdateMemoryMiddleware: факт сохранён из сообщения: {text[:100]}...")
+            logger.debug("UpdateMemoryMiddleware: задача поставлена в фоновые задачи")
         except Exception as e:
             logger.error(f"Ошибка сохранения в память: {e}", exc_info=True)

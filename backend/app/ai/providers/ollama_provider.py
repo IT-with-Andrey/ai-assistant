@@ -66,6 +66,7 @@ class OllamaProvider(BaseLLMProvider):
     async def generate_stream(self, messages: List[Dict[str, str]], **kwargs) -> AsyncGenerator[str, None]:
         logger.debug("Стриминг-запрос к Ollama: %d сообщений", len(messages))
 
+        # Внутренний генератор, имеет доступ к self и messages через замыкание
         async def _stream_tokens():
             try:
                 safe_messages = []
@@ -74,7 +75,7 @@ class OllamaProvider(BaseLLMProvider):
                         'role': str(msg.get('role', 'user')),
                         'content': str(msg.get('content', ''))
                     }
-                    safe_messages.append(safe_msg)
+                    safe_messages.append(safe_msg)   # теперь все сообщения попадают в список
                 model = self.model_name
                 async with httpx.AsyncClient(timeout=120) as client:
                     async with client.stream(
@@ -102,4 +103,5 @@ class OllamaProvider(BaseLLMProvider):
                 logger.error(f"Ошибка стрима Ollama: {e}")
                 raise ProviderError(f"Ollama стрим недоступен: {e}")
 
-        return _stream_tokens()
+        # Возвращаем результат вызова внутреннего генератора
+        return _stream_tokens() 

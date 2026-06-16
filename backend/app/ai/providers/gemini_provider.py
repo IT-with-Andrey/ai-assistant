@@ -7,7 +7,7 @@ from backend.app.ai.providers.base import BaseLLMProvider
 from backend.app.ai.provider_router import ProviderError
 
 class GeminiProvider(BaseLLMProvider):
-    def __init__(self, api_key: str = None, model_name: str = "gemini-2.5-flash", on_model_switch=None):
+    def __init__(self, api_key: str = None, model_name: str = "gemini-2.5-flash-lite", on_model_switch=None):
         self.api_key = api_key or settings.GEMINI_API_KEY
         self.model_name = model_name
         self.client = None

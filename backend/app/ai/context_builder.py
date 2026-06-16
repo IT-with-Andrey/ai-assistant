@@ -3,19 +3,19 @@ from backend.app.core.logger import logger
 
 # 🔥 ИСПРАВЛЕНО: Никаких импортов app_container сверху! Полная изоляция от фабрики.
 
-async def build_context(history, user_input, 
+async def build_context(history,
+                        user_input, 
                         memory_orchestrator, 
                         summary: str = None, 
                         user_facts: str = None, 
                         user_id: str = 'default_user',
-                        persona_id=None
-                        ):
+                        persona_id: str = None):
     
     # Теперь memory_orchestrator заходит честно снаружи как аргумент функции
     persona_manager = PersonaManager(memory_orchestrator)
     
-    
     if persona_id:
+        
         role = persona_id
     else:
         facts = await memory_orchestrator.get_user_fact(user_id)
@@ -26,7 +26,6 @@ async def build_context(history, user_input,
                 break
 
     system_prompt = await persona_manager.get_system_prompt(role)
-    
 
     message = []
     last_msg = history[-1] if history else None
@@ -37,7 +36,7 @@ async def build_context(history, user_input,
         last_is_system = last_msg and hasattr(last_msg, 'role') and last_msg.role == 'system'
         last_content = last_msg.content if last_is_system else None
 
-    if system_prompt and (not last_is_system or last_content != system_prompt):
+    if not last_is_system or last_content != system_prompt:
         message.append({"role": "system", "content": system_prompt})
     if user_facts:
         message.append({"role": "system", "content": f"Факты о пользователе:\n{user_facts}"})

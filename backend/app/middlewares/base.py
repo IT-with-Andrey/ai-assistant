@@ -5,19 +5,17 @@ from typing import Any, Dict, List, Optional, AsyncGenerator
 class ChatContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    user_input: str = ""                                   # Может быть пустым при init
-    user_id: str = "default_user"                        # ID авторизованного юзера
-    
-    session_id: str ="default_session"         # Сквозной ID гостя/сессии
+    user_input: str = ""                         # может быть пустым (инициализация чата)
+    user_id: str = "default_user"
+    session_id: str = "default_session"          # сквозной ID гостя/юзера
     chat_id: Optional[str] = None               # ID конкретного диалога
-    persona_id: Optional[str] = None             # активная роль
-    response: Optional[str] = None      
+    persona_id: Optional[str] = None            # активная роль
+
+    response: Optional[str] = None
     should_stop: bool = False
-    
     history: List[Dict[str, str]] = Field(default_factory=list)
     facts: Optional[str] = None
     llm_context: List[Dict[str, str]] = Field(default_factory=list)
-    # Новые поля для стриминга и ошибок
     response_stream: Optional[AsyncGenerator[str, None]] = None
     error: Optional[str] = None
 
