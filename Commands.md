@@ -31,3 +31,23 @@ watch -n 1 sensors
 ssh Andrey@192.168.0.5
 
 
+
+
+
+Bash
+# 1. Создаем новое виртуальное окружение (папка .venv)
+python -m venv .venv
+
+# 2. Активируем его
+# Если OS Windows (Command Prompt / cmd):
+.venv\Scripts\activate
+# Или если OS Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# Если OS Linux / macOS:
+source .venv/bin/activate
+
+# 3. Обновляем pip (рекомендуется)
+python -m pip install --upgrade pip
+
+# 4. Устанавливаем зависимости из файла
+pip install -r requirements.txt

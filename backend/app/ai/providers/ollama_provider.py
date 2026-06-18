@@ -13,7 +13,7 @@ class OllamaProvider(BaseLLMProvider):
         self.host = host or settings.OLLAMA_HOST
         self.fallback_models = ["nemotron-3-super:cloud", "minimax-m3:cloud", "gemma4:31b-cloud"]
 
-    @log_execution_time
+    
     async def generate_response(self, messages: List[Dict[str, str]], **kwargs) -> str:
         logger.debug("Отправка запроса к Ollama: %d сообщений", len(messages))
         safe_messages = []

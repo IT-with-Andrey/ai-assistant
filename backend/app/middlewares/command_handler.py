@@ -9,7 +9,7 @@ class CommandHandlerMiddleware(BaseMiddleware):
         logger.debug("CommandHandlerMiddleware: начало обработки")
         user_input = ctx.user_input.strip()
         if not user_input.startswith("/"):
-            logger.debug("CommandHandlerMiddleware: команда /help выполнена")
+            logger.debug("CommandHandlerMiddleware: команда не пропускем  выполнена")
             return ctx
 
         if user_input.startswith("/role"):

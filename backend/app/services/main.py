@@ -16,7 +16,8 @@ from backend.app.ai.orchestrator_factory import app_container
 from backend.app.core.logger import logger
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="mem0")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="google.genai")
+warnings.filterwarnings(
+    "ignore", category=DeprecationWarning, module="google.genai")
 
 app = FastAPI(title="AI Assistant Persona API")
 app.add_middleware(
@@ -26,25 +27,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 @app.get("/")
 def root():
     return {"status": "ok"}
+
 
 @app.get("/health")
 def health():
     return {"server": "running"}
 
 # --- Модели запросов ---
+
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
     persona_id: str | None = None
+
 
 class InitChatRequest(BaseModel):
     session_id: str
     persona_id: str = "default"
 
 # --- Стриминг ---
+
+
 @app.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
@@ -52,15 +61,18 @@ async def chat_stream(
     db: AsyncSession = Depends(get_db)
 ):
     logger.info(f"Получен стрим-запрос от пользователя {request.user_id}")
-    orchestrator = create_streaming_orchestrator(db)
-    ctx = ChatContext(user_input=request.message, user_id=request.user_id, persona_id=request.persona_id)
+    orchestrator = create_streaming_orchestrator(db, background_tasks=background_tasks)
+    ctx = ChatContext(user_input=request.message,
+                      user_id=request.user_id, persona_id=request.persona_id)
 
     try:
         ctx = await orchestrator.run(ctx)
     except Exception as e:
         await db.rollback()
-        logger.error(f"Ошибка выполнения оркестратора в стриме: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка ИИ-конвейера")
+        logger.error(
+            f"Ошибка выполнения оркестратора в стриме: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Внутренняя ошибка ИИ-конвейера")
 
     if not ctx.response_stream:
         if ctx.response:
@@ -70,19 +82,22 @@ async def chat_stream(
             ctx.response_stream = _command_stream()
         else:
             await db.commit()
-            raise HTTPException(status_code=500, detail="Провайдер не вернул стрим-данные")
+            raise HTTPException(
+                status_code=500, detail="Провайдер не вернул стрим-данные")
 
     async def event_generator():
         success = True
         logger.debug("event_generator: начал передачу стрима")
         try:
             async for chunk in ctx.response_stream:
-                
-                safe_chunk = chunk.replace('\n', '\\n')   # <-- экранируем переносы
+
+                # <-- экранируем переносы
+                safe_chunk = chunk.replace('\n', '\\n')
                 yield f"data: {safe_chunk}\n\n"
         except Exception as e:
             success = False
-            logger.error(f"Ошибка во время передачи стрима пользователю: {e}", exc_info=True)
+            logger.error(
+                f"Ошибка во время передачи стрима пользователю: {e}", exc_info=True)
         finally:
             if success:
                 await db.commit()
@@ -94,14 +109,18 @@ async def chat_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # --- Обычный чат ---
+
+
 @app.post("/chat")
 async def chat_regular(
     request: ChatRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
-    orchestrator = create_chat_orchestrator(db, background_tasks=background_tasks)
-    ctx = ChatContext(user_input=request.message, user_id=request.user_id, persona_id=request.persona_id)
+    orchestrator = create_chat_orchestrator(
+        db, background_tasks=background_tasks)
+    ctx = ChatContext(user_input=request.message,
+                      user_id=request.user_id, persona_id=request.persona_id)
 
     try:
         ctx = await orchestrator.run(ctx)
@@ -113,6 +132,8 @@ async def chat_regular(
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Инициализация чата ---
+
+
 @app.post("/chats/init")
 async def init_chat(request: InitChatRequest, db: AsyncSession = Depends(get_db)):
     if request.persona_id not in PERSONAS:
@@ -128,7 +149,8 @@ async def init_chat(request: InitChatRequest, db: AsyncSession = Depends(get_db)
         await db.commit()
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка инициализации чата: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка инициализации чата: {e}")
 
     # Сохраняем факт о выбранной роли в глобальную память (временно обёрнуто в try/except)
     try:
@@ -147,4 +169,3 @@ async def init_chat(request: InitChatRequest, db: AsyncSession = Depends(get_db)
         "display_name": persona["display_name"],
         "welcome_message": welcome
     }
-

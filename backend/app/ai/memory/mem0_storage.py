@@ -91,7 +91,7 @@ class Mem0StorageProvider(BaseVectorMemory):
         memory = self._get_or_create_memory(collection_name)
         async def _add():
             logger.debug(f"Mem0.add_memory START: user={user_id}, persona={persona_id}, text='{text[:100]}...'")
-            result = await asyncio.to_thread(memory.add, text, user_id=user_id, metadata=metadata)
+            result = await asyncio.to_thread(memory.add, text, user_id=user_id, metadata=metadata, infer=False)
             logger.debug(f"Mem0.add_memory RESULT: {result}")
             return result
         return await self._try_with_fallback(_add)

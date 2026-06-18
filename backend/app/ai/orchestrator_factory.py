@@ -16,10 +16,12 @@ from backend.app.middlewares.load_history import LoadHistoryMiddleware
 from backend.app.middlewares.search_memory import SearchMemoryMiddleware
 from backend.app.middlewares.context_assembly import ContextAssemblyMiddleware
 from backend.app.middlewares.call_llm import CallLLMMiddleware
-from backend.app.middlewares.update_memory import UpdateMemoryMiddleware
-from backend.app.middlewares.streaming_call_llm import StreamingCallLLMMiddleware
 
-from backend.app.ai.providers.ollama_provider import OllamaProvider
+from backend.app.middlewares.streaming_call_llm import StreamingCallLLMMiddleware
+from backend.app.ai.memory.manager import MemoryManager
+from backend.app.ai.memory.episodic import EpisodicMemory
+from backend.app.ai.memory.reflection import ReflectionLayer
+from backend.app.ai.memory.middleware import MemoryManagerMiddleware
 class AppContainer:
     def __init__(self):
         # Память
@@ -36,7 +38,20 @@ class AppContainer:
         self.gemini_provider = GeminiProvider()
         self.ollama_provider = OllamaProvider(model_name="gemma4:31b-cloud")
         self.llm_router = ProviderRouter(providers=[self.ollama_provider, self.gemini_provider])
-    
+        # 3. НОВЫЕ КОМПОНЕНТЫ: Продвинутая память (Эпизоды, Рефлексия, Менеджер)
+        self.episodic_memory = EpisodicMemory(self.memory_orchestrator)
+        
+        self.memory_manager = MemoryManager(
+            llm_provider=self.llm_router,
+            memory_orchestrator=self.memory_orchestrator,
+            episodic_memory=self.episodic_memory
+        )
+        
+        self.reflection_layer = ReflectionLayer(
+            llm_provider=self.llm_router,
+            memory_orchestrator=self.memory_orchestrator,
+            episodic_memory=self.episodic_memory
+        )
 
 app_container = AppContainer()
 
@@ -51,7 +66,8 @@ def create_chat_orchestrator(db: AsyncSession, background_tasks=None) -> ChatOrc
         ContextAssemblyMiddleware(),
         CallLLMMiddleware(app_container.llm_router),
         SaveAssistantMessageMiddleware(db),     
-        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+        
+        MemoryManagerMiddleware(app_container.memory_manager, background_tasks=background_tasks)
     ]
     return ChatOrchestrator(middlewares)
 
@@ -63,7 +79,9 @@ def create_streaming_orchestrator(db: AsyncSession, background_tasks=None) -> Ch
         LoadHistoryMiddleware(db),
         SearchMemoryMiddleware(app_container.memory_orchestrator),
         ContextAssemblyMiddleware(),
+
         StreamingCallLLMMiddleware(app_container.llm_router),
-        UpdateMemoryMiddleware(app_container.memory_orchestrator, background_tasks=background_tasks)
+        
+        MemoryManagerMiddleware(app_container.memory_manager, background_tasks=background_tasks)
     ]
     return ChatOrchestrator(middlewares)
