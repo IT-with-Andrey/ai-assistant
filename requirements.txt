@@ -19,3 +19,5 @@ httpx
 google-genai
 openai
 asyncpg
+pytest-asyncio
+ollama

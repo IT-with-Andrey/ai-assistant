@@ -106,7 +106,7 @@ class Mem0StorageProvider(BaseVectorMemory):
             facts = []
             for m in memories:
                 if isinstance(m, dict):
-                    facts.append(m.get('text', ''))
+                    facts.append(m.get('memory', ''))
             return facts
         return await self._try_with_fallback(_get_all)
 
@@ -119,7 +119,7 @@ class Mem0StorageProvider(BaseVectorMemory):
             results = raw.get('results', []) if isinstance(raw, dict) else []
             relevant_facts = []
             for r in results:
-                fact = r.get('text', '') if isinstance(r, dict) else str(r)
+                fact = r.get('memory', '') if isinstance(r, dict) else str(r)
                 if fact:
                     relevant_facts.append(fact)
             return relevant_facts

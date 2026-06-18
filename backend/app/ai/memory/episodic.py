@@ -43,23 +43,11 @@ class EpisodicMemory:
     async def get_recent_events(self, user_id: str, persona_id: str, limit: int = 50):
         """Возвращает последние N событий, отфильтрованные по user_id и persona_id."""
         try:
-            # Получаем все глобальные факты, фильтруем по metadata
             all_facts = await self.memory.get_user_fact(user_id, persona_id=None)
-            events = []
-            for fact in all_facts:
-                if isinstance(fact, dict):
-                    meta = fact.get('metadata', {})
-                    if (meta.get('event_type') and
-                        meta.get('user_id') == user_id and
-                        (meta.get('persona_id') == persona_id or not persona_id)):
-                        events.append(fact)
-                else:
-                    # факты могут быть строками, тогда пропускаем
-                    pass
-            # Сортируем по timestamp (если есть) и берём последние limit
-            events.sort(key=lambda e: e.get('metadata', {}).get('timestamp', 0), reverse=True)
-            logger.debug(f"EpisodicMemory: получено {len(events)} событий для {user_id}/{persona_id}")
-            return events[:limit]
+        # Отбираем только те факты, которые являются событиями (по префиксу '[')
+            events = [f for f in all_facts if isinstance(f, str) and f.startswith('[')]
+            logger.debug(f"EpisodicMemory: получено {len(events)} событий для {user_id}")
+            return events[-limit:]
         except Exception as e:
             logger.error(f"EpisodicMemory: ошибка получения событий: {e}")
             return []

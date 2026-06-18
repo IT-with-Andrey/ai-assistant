@@ -20,7 +20,7 @@ $env:OLLAMA_MODELS = "C:\ollama_models"
 ollama serve
 
 ollama run qwen2.5-coder:7b
-
+pytest tests/evaluation/test_memory_health.py -v -s
 
 Proxom
 
@@ -51,3 +51,40 @@ python -m pip install --upgrade pip
 
 # 4. Устанавливаем зависимости из файла
 pip install -r requirements.txt
+
+
+
+
+# проверить изменения
+git status
+
+# добавить всё
+git add .
+
+# создать коммит
+git commit -m "описание"
+
+# отправить на GitHub
+git push
+
+# получить изменения
+git pull
+
+# посмотреть историю
+git log --oneline
+
+# посмотреть ветки
+git branch
+
+# создать и перейти в ветку
+git checkout -b feature-name
+
+# перейти в ветку
+git checkout main
+
+Самый частый цикл:
+
+git status
+git add .
+git commit -m "что сделал"
+git push
