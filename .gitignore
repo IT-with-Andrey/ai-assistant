@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# Node
+node_modules/
+
+# VSCode
+.vscode/
+
+# Logs
+*.log
+
+# Chroma vector store
+chroma_db/
+
+# Documentation builds
+docs/
+
+# Specific junk files
+26.1.1
+
+
+# Папка с телеметрией DeepEval (автосгенеренная)
+.deepeval/
+
+# Конкретная папка локальной векторной базы Chroma для Mem0
+chroma_db_mem0/
+
+# Артефакты тестов (если появятся)
+.pytest_cache/
+
+# Скомпилированные Python-файлы (на всякий случай, у тебя уже есть __pycache__)
+*.pyc
+*.pyo
